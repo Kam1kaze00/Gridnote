@@ -15,7 +15,7 @@ enum NotebookTheme: String, CaseIterable, Codable {
   }
   var mark: (String, String) {
     switch self {
-    case .standard: return ("pen-mark", "svg")
+    case .standard: return ("default-pencil", "png")
     case .cartoon: return ("pencil", "png")
     case .tokyo: return ("tokyo-pencil", "png")
     case .cyber: return ("cyber-pencil", "png")

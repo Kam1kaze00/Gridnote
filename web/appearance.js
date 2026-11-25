@@ -2,7 +2,7 @@
   const catalog = {
     Default: {
       id: "refined",
-      mark: "pen-mark.svg",
+      mark: "default-pencil.png",
       sprite: "tools",
       chrome: "#1a2027",
     },

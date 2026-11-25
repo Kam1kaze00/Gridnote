@@ -1,4 +1,4 @@
-![Gridnote Drafting Room, an illustrated pencil and construction lines on a drafting board](web/assets/default-cover.svg)
+![A waving pencil on the left and Gridnote on the right of a teal drafting desk](docs/images/drafting-desk.png)
 
 # Gridnote
 
@@ -49,7 +49,7 @@ Choose a theme in the launcher or open **Options → Theme** while writing. The 
 
 | Theme | What it looks like |
 | --- | --- |
-| [Default](https://kam1kaze00.github.io/Gridnote/gallery/#default) | Drafting Room. A graphite drafting board and a pale green pen nib. |
+| [Default](https://kam1kaze00.github.io/Gridnote/gallery/#default) | Drafting Desk. A waving pencil on a taped sketch, a teal board and a blue notebook grid. |
 | [70s Cartoon](https://kam1kaze00.github.io/Gridnote/gallery/#cartoon) | A grinning pencil, inked tools and a double margin on ivory paper. |
 | [Tokyo Neon](https://kam1kaze00.github.io/Gridnote/gallery/#tokyo) | Transit lettering, turquoise route lines and numbered station circles. |
 | [Cyberpunk](https://kam1kaze00.github.io/Gridnote/gallery/#cyber) | Amber keys, graphite panels and monospaced instrument lettering. |

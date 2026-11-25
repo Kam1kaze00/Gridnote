@@ -28,7 +28,13 @@
 }
 .start-cover {
   height: clamp(80px, 16vh, 120px);
-  background: #eeece9 url("./assets/default-cover.svg") center/cover;
+  background: #213c40 url("./assets/default-cover.svg") center/cover;
+}
+.refined .start-cover {
+  height: auto;
+  aspect-ratio: 840 / 200;
+  background-size: contain;
+  background-repeat: no-repeat;
 }
 .start-content {
   padding: clamp(18px, 4vw, 30px);

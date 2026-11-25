@@ -72,7 +72,7 @@ Before publishing, run **Test desktop downloads** on the candidate release with 
 
 ## Appearance
 
-Both clients store the interface theme locally and share the launcher and subject-panel assets. The first launch uses the Drafting Room illustration. Each of the five themes has a distinct toolbar mark, tool artwork and type. Pixelated uses discrete filled cells and Pixelify Sans. Tokyo Neon uses Barlow Semi Condensed. Cyberpunk uses IBM Plex Mono. The fonts and their OFL notices ship in the application. The notebook stores stationery separately so existing exercises retain their page design when they open on another device.
+Both clients store the interface theme locally and share the launcher and subject-panel assets. The first launch uses the Drafting Desk illustration. Each of the five themes has a distinct toolbar mark, tool artwork and type. Pixelated uses discrete filled cells and Pixelify Sans. Tokyo Neon uses Barlow Semi Condensed. Cyberpunk uses IBM Plex Mono. The fonts and their OFL notices ship in the application. The notebook stores stationery separately so existing exercises retain their page design when they open on another device.
 
 The Tokyo wayfinding palette draws on [Tokyo Metro’s route symbols](https://www.tokyometro.jp/lang_en/station/202303_number_en.pdf). The handheld design takes its four tones from the [original Game Boy display](https://www.nintendo.com/en-gb/Hardware/Nintendo-History/Game-Boy/Game-Boy-627031.html). The terminal uses [IBM Plex](https://www.ibm.com/plex/). Interface graphics follow [W3C’s guidance on non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
 

@@ -2,7 +2,7 @@ const designs = [
   [
     "Default",
     "default",
-    "A graphite drafting board, a quiet toolbar, and the familiar blue grid.",
+    "A waving pencil on a teal drafting desk. Open the notebook to write on the familiar blue grid.",
   ],
   [
     "70s Cartoon",

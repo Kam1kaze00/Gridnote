@@ -63,7 +63,7 @@ async function main() {
     await page.waitForSelector("#sheet");
     assert.match(
       await page.locator("#files img").getAttribute("src"),
-      /pen-mark\.svg$/,
+      /default-pencil\.png$/,
     );
     await page.click("#settings");
     const editorTheme = page.locator("#popover select[aria-label=Theme]");
@@ -161,7 +161,7 @@ async function main() {
       .click();
     assert.match(
       await page.locator("#files img").getAttribute("src"),
-      /pen-mark\.svg$/,
+      /default-pencil\.png$/,
     );
     assert.deepEqual(errors, []);
     console.log(

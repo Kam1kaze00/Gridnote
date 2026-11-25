@@ -30,6 +30,14 @@ const assert = require("node:assert/strict");
         await page.setViewportSize({ width: w, height: h });
         await page.evaluate(() => document.fonts.ready);
         const bounds = await picker.boundingBox();
+        if (name === "Default") {
+          const cover = await page.locator(".start-cover").boundingBox();
+          assert(
+            cover.x >= 0 && cover.x + cover.width <= w + 1 &&
+              Math.abs(cover.width / cover.height - 4.2) < 0.01,
+            "the whole Drafting Desk cover fits at " + w,
+          );
+        }
         assert(
           bounds.x >= 0 && bounds.x + bounds.width <= w + 1,
           name + " launcher field " + w,
