@@ -5,13 +5,8 @@ const path = require("node:path");
 const http = require("node:http");
 // Playwright WebKit's offline emulation rejects service-worker navigation.
 // Disconnect a real test origin to exercise cached navigation on that engine.
-async function testOrigin(target, unavailable = () => false) {
+async function testOrigin(target) {
   const proxy = http.createServer((req, res) => {
-    if (unavailable(req.url)) {
-      res.writeHead(503);
-      res.end();
-      return;
-    }
     const up = http.request(
       new URL(req.url, target),
       { method: req.method },
@@ -20,8 +15,6 @@ async function testOrigin(target, unavailable = () => false) {
         result.pipe(res);
       },
     );
-    // A failed precache can cancel the other downloads in its batch. Release
-    // their upstream sockets even when the browser has stopped reading.
     res.once("close", () => up.destroy());
     up.on("error", () => {
       if (res.destroyed || res.writableEnded) return;
@@ -54,10 +47,10 @@ async function main() {
   const proxy = name === "webkit" ? await testOrigin(target) : null;
   try {
     if (name === "chromium") {
-      let interrupt = true;
-      const interrupted = await testOrigin(target, url => interrupt && url.endsWith("eng.traineddata.gz"));
       const fresh = await browser.newContext();
       try {
+        const asset = "**/eng.traineddata.gz";
+        await fresh.route(asset, route => route.fulfill({ status: 503, body: "Offline" }));
         const firstVisit = await fresh.newPage();
         firstVisit.setDefaultTimeout(30000);
         async function waitStatus(pattern) {
@@ -69,14 +62,13 @@ async function main() {
             throw Error("Offline setup expected " + pattern + ", saw " + status, { cause: error });
           }
         }
-        await firstVisit.goto(interrupted.url);
+        await firstVisit.goto(target);
         await waitStatus("Reopen online to retry");
-        interrupt = false;
+        await fresh.unroute(asset);
         await firstVisit.reload();
         await waitStatus("Ready offline");
       } finally {
         await fresh.close();
-        interrupted.close();
       }
     }
     const context = await browser.newContext({
@@ -260,6 +252,8 @@ async function main() {
     assert.equal(await guide.title(), "Gridnote Guide");
     await guide.close();
     assert.deepEqual(errors, []);
+    if (!proxy) await context.setOffline(false);
+    await context.close();
     console.log(
       "PASS " +
         name +
@@ -270,7 +264,7 @@ async function main() {
     await browser.close();
   }
 }
-main().catch((e) => {
+main().then(() => process.exit(0)).catch((e) => {
   console.error(e);
-  process.exitCode = 1;
+  process.exit(1);
 });
