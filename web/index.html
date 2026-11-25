@@ -13,8 +13,9 @@
     <link rel="apple-touch-icon" href="./assets/icon-192.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./launcher.css" />
   </head>
-  <body>
+  <body class="launching">
     <header>
       <button id="files" title="Notebook menu" aria-label="Notebook menu">
         <img src="./assets/icon-192.png" alt="" /><span id="name">Gridnote</span
@@ -22,13 +23,6 @@
       </button>
       <div class="spacer"></div>
       <button id="saved" hidden>Saved</button
-      ><button
-        id="subjects"
-        aria-label="Study tools"
-        title="Study tools"
-        hidden
-      >
-        Study tools</button
       ><button id="solve" class="document secondary" hidden>Solve</button
       ><button id="preview" class="document secondary" hidden>
         Preview PDF</button
@@ -54,21 +48,8 @@
         ☷
       </button>
     </nav>
-    <main id="welcome">
-      <div class="welcome">
-        <img src="./assets/icon-192.png" width="74" height="74" alt="" />
-        <h1>Gridnote</h1>
-        <p>Write on grid paper or annotate a PDF.</p>
-        <p id="detected-device" hidden></p>
-        <label>Major <select id="welcome-major" aria-label="Welcome major"></select></label>
-        <div class="welcome-actions">
-          <button id="new" class="primary" disabled>＋ New Notebook</button
-          ><button id="open" class="secondary" disabled>Open…</button>
-        </div>
-        <div id="recents"></div>
-        <small id="offline-status" role="status">Preparing for offline use…</small>
-      </div>
-    </main>
+    <div id="subject-strip" role="toolbar" aria-label="Major tools" hidden></div>
+    <main id="welcome" class="launcher-host"></main>
     <main id="stage" hidden>
       <aside id="pages-panel" aria-label="Pages" hidden>
         <strong>Pages</strong>
@@ -151,6 +132,8 @@
       hidden
     /><input id="imagefile" type="file" accept="image/*" multiple hidden />
     <div id="notice" role="status" hidden></div>
+    <script src="./majors.js"></script>
+    <script src="./launcher.js"></script>
     <script src="./solver.js"></script>
     <script type="module" src="./app.mjs"></script>
   </body>

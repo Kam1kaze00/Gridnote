@@ -96,6 +96,7 @@ const assert = require("node:assert/strict");
     const before = await page.locator("#view").evaluate((el) => el.scrollTop);
     assert(before > 100);
     await page.reload();
+    await page.tap("#continue");
     await page.waitForSelector("#sheet");
     assert.equal((await saved()).objects.length, 2);
     assert(

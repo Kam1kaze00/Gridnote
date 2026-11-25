@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as scratch:
             else:
                 raise RuntimeError("The packaged notebook did not respond")
             env = dict(os.environ, GRIDNOTE_URL=address)
-            tests = ["browser.cjs"]
+            tests = ["browser.cjs", "major-tools.cjs"]
             if env.get("ENGINE") == "webkit":
                 tests.extend(["ipad.cjs", "organizer.cjs"])
             elif env.get("ENGINE", "chromium") == "chromium":

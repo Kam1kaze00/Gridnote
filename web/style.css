@@ -197,41 +197,15 @@ footer button {
   display: grid;
   place-items: center;
 }
-.welcome {
-  text-align: center;
-  padding: 20px;
-  max-width: 100%;
-}
 h1 {
   font-size: 32px;
   letter-spacing: -1px;
   margin: 10px 0 8px;
 }
-.welcome p {
-  margin: 0 0 20px;
-  color: var(--muted);
-  font-size: 14px;
-}
-.welcome label {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-}
 select {
   min-height: 30px;
   padding: 3px;
   max-width: 100%;
-}
-.welcome-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 18px;
-}
-.welcome-actions button {
-  padding: 7px 13px;
 }
 #recents {
   display: grid;
@@ -450,9 +424,6 @@ hr {
   }
   #inks {
     display: none;
-  }
-  #welcome select {
-    max-width: 195px;
   }
   footer {
     padding-left: 6px;
@@ -792,3 +763,11 @@ footer #selection {
 }
 
 #toolset .glyph { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; }
+
+
+body.launching > header,body.launching > nav,body.launching #stage,body.launching #bottom,body.launching #subject-strip {display:none}
+#subject-strip {display:flex; align-items:center; gap:6px; flex:none; overflow-x:auto; padding:4px 12px; background:#202a2d; border-bottom:1px solid #3d4e4b; scrollbar-width:thin}
+#subject-strip[hidden] {display:none}
+#subject-strip strong {font-size:11px; font-weight:600; color:#a7cec2; white-space:nowrap; margin-right:4px}
+#subject-strip button {white-space:nowrap; font-size:12px; min-height:29px; background:#2c373b; border:1px solid #3d4c50; border-radius:6px; padding:3px 10px}
+@media(pointer:coarse) {#subject-strip button {min-height:44px}}

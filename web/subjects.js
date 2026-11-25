@@ -154,5 +154,7 @@ function render() {
   update();
 }
 for (const t of tools) $("tool").append(option(t.name));
+const requestedTool = new URLSearchParams(location.search).get("tool");
+if (tools.some(t => t.name === requestedTool)) $("tool").value = requestedTool;
 $("tool").onchange = render;
 render();

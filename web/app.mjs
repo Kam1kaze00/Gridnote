@@ -48,6 +48,7 @@ import {
 } from "./engine.mjs";
 import {
   loadState,
+  lastNotebookInfo,
   saveState,
   saveRecord,
   loadRecord,
@@ -67,8 +68,6 @@ import {
   majors,
   major,
   chooseMajor,
-  showLauncher,
-  startupLauncher,
   settings,
   setting,
   deviceHelp,
@@ -291,7 +290,7 @@ function positionState() {
   };
 }
 function recordView(now = false) {
-  if (!book || restoring) return;
+  if (!book || restoring || document.body.classList.contains("launching")) return;
   clearTimeout(stateTimer);
   const store = () => {
     const id = book.id,
@@ -408,6 +407,7 @@ async function openBook(next, name, state = null, stored = null) {
   zoom = clamp(Number(state?.zoom) || 1, 1, 4);
   pages = Math.max(2, pageCount(book) + 1, Math.ceil((state?.y || 0) / H) + 2);
   $("welcome").hidden = true;
+  document.body.classList.remove("launching");
   for (const id of [
     "tools",
     "stage",
@@ -509,10 +509,7 @@ $("page").onclick = () => {
 function refresh() {
   if (!book) return;
   updateSidebar(book, source, currentPage());
-  const subject = $("subjects");
-  subject.hidden = false;
-  subject.textContent = major() === "None" ? "Major" : "Study tools";
-  subject.setAttribute("aria-label", major() === "None" ? "Choose major" : "Study tools");
+  refreshSubjectStrip();
   const prefs = settings();
   for (const id of Object.keys(toolNames)) {
     const button = $("tool-" + id);
@@ -557,7 +554,7 @@ function refresh() {
   draw();
 }
 function resize() {
-  if (!book) return;
+  if (!book || document.body.classList.contains("launching")) return;
   const oldScale = scale,
     oldX = view.scrollLeft / oldScale,
     oldY = view.scrollTop / oldScale;
@@ -1731,10 +1728,10 @@ document.addEventListener("copy", (e) => {
   if (book && !isEntry(e.target)) copySelection(e);
 });
 document.addEventListener("cut", (e) => {
-  if (book && !isEntry(e.target) && copySelection(e)) deleteSelection();
+  if (book && !document.body.classList.contains("launching") && !isEntry(e.target) && copySelection(e)) deleteSelection();
 });
 document.addEventListener("paste", (e) => {
-  if (!book || isEntry(e.target)) return;
+  if (!book || document.body.classList.contains("launching") || isEntry(e.target)) return;
   const data = e.clipboardData;
   const own = data.getData("application/x-gridnote-objects");
   if (own) {
@@ -2103,18 +2100,28 @@ function menuAction(label, action, enabled = true) {
   item.disabled = !enabled;
   pop.append(item);
 }
-$("subjects").onclick = () => {
-  if (major() === "None") return launcherMenu($("subjects"));
-  openPop($("subjects"), "subjects", "Study tools", () => {
-    const frame = $el("iframe");
-    frame.title = "Study tools";
-    frame.src = "./subjects.html#" + encodeURIComponent(major());
-    frame.className = "subject-frame";
-    frame.dataset.major = major();
-    pop.append(frame);
-    menuAction("Change major…", () => launcherMenu($("subjects")));
-  });
-};
+function refreshSubjectStrip() {
+  const shelf = $("subject-strip"), name = major();
+  if (shelf.dataset.major === name) return;
+  shelf.dataset.major = name;
+  shelf.hidden = name === "None";
+  shelf.replaceChildren();
+  if (shelf.hidden) return;
+  shelf.append($el("strong", name));
+  for (const entry of GridnoteKits.kits[name]) {
+    const chip = button(entry.name, () => {
+      openPop(chip, "subjects", entry.name, () => {
+        const frame = $el("iframe");
+        frame.title = entry.name;
+        frame.src = "./subjects.html?tool=" + encodeURIComponent(entry.name) + "#" + encodeURIComponent(name);
+        frame.className = "subject-frame";
+        frame.dataset.major = name;
+        pop.append(frame);
+      });
+    });
+    shelf.append(chip);
+  }
+}
 window.addEventListener("message", (e) => {
   const frame = pop.querySelector("iframe.subject-frame");
   if (
@@ -2135,24 +2142,40 @@ window.addEventListener("message", (e) => {
   placeEditor();
   finishText();
 });
-function launcherMenu(anchor) {
-  openPop(anchor, "launcher", "Notebook launcher", () => {
-    const label = $el("label", "Major"), select = $el("select");
-    select.setAttribute("aria-label", "Major");
-    for (const name of majors) select.append($el("option", name));
-    select.value = major();
-    select.onchange = () => {
-      chooseMajor(select.value);
-      $("welcome-major").value = major();
-      refresh();
-    };
-    label.append(select);
-    pop.append(label);
-    checkOption("Show launcher at startup", showLauncher(), startupLauncher);
-    if (book) menuAction("Continue notebook", closePop);
-    menuAction("New notebook", newBook);
-    menuAction("Open notebook or PDF…", () => $("file").click());
-  });
+let lastNotebookID, pausedView;
+async function showStartScreen() {
+  finishText();
+  finishGesture();
+  recordView(true);
+  await flush();
+  pausedView = positionState();
+  lastNotebookID = book.id;
+  closePop();
+  launcher.selectMajor(major());
+  launcher.recent(title, true);
+  $("welcome").hidden = false;
+  document.body.classList.add("launching");
+}
+let enteringNotebook = false;
+async function enterFromLauncher(action) {
+  if (enteringNotebook) return;
+  enteringNotebook = true;
+  try {
+    await openLauncherChoice(action);
+  } finally {
+    enteringNotebook = false;
+  }
+}
+async function openLauncherChoice(action) {
+  if (action === "open") { $("file").click(); return; }
+  if (action === "new") { await newBook(); return; }
+  if (!book || book.id !== lastNotebookID) { await openStored(lastNotebookID); return; }
+  $("welcome").hidden = true;
+  document.body.classList.remove("launching");
+  refresh();
+  resize();
+  if (pausedView) view.scrollTo(pausedView.x * scale, pausedView.y * scale);
+  draw();
 }
 function settingsMenu() {
   openPop($("settings"), "device", "Writing controls", () => {
@@ -2164,7 +2187,7 @@ function settingsMenu() {
     select.value = major();
     select.onchange = () => {
       chooseMajor(select.value);
-      $("welcome-major").value = major();
+      launcher.selectMajor(major());
       refresh();
     };
     label.append(select);
@@ -2233,7 +2256,7 @@ async function fileMenu() {
   openPop($("files"), "files", "Notebook", () => {
     menuAction("New notebook", newBook);
     menuAction("Open notebook or PDF…", () => $("file").click());
-    menuAction("Notebook launcher…", () => launcherMenu($("files")));
+    menuAction("Notebook launcher…", showStartScreen);
     menuAction("Help & About", () =>
       window.open("./guide.html", "_blank", "noopener"),
     );
@@ -2486,6 +2509,7 @@ async function updatePreview() {
   $("pdfnext").disabled = n === pdfPreview.numPages - 1;
 }
 document.addEventListener("keydown", (e) => {
+  if (document.body.classList.contains("launching")) return;
   const mod = e.metaKey || e.ctrlKey;
   if (isEntry(e.target)) {
     if (e.key === "Escape" && pop.contains(e.target)) {
@@ -2689,8 +2713,6 @@ $("palette").onclick = () => {
 $("settings").onclick = settingsMenu;
 $("paper").onclick = paperMenu;
 $("selection").onclick = selectionMenu;
-$("new").onclick = () => run(newBook);
-$("open").onclick = () => $("file").click();
 $("files").onclick = () => run(fileMenu);
 $("file").onchange = () =>
   run(async () => {
@@ -2741,10 +2763,11 @@ $("pdfnext").onclick = () => {
     run(updatePreview);
   }
 };
-const welcomeMajor = $("welcome-major");
-for (const name of majors) welcomeMajor.append($el("option", name));
-welcomeMajor.value = major();
-welcomeMajor.onchange = () => chooseMajor(welcomeMajor.value);
+const launcher = GridnoteLauncher.mount($("welcome"), {
+  major: major(), device: mobileSurface ? "" : deviceLabel(),
+  start: action => run(() => enterFromLauncher(action)),
+  change: value => chooseMajor(value),
+});
 const detectedLabel = $("detected-device");
 detectedLabel.hidden = mobileSurface;
 detectedLabel.textContent = deviceLabel();
@@ -2782,21 +2805,10 @@ function imageMenu() {
   });
 }
 run(async () => {
-  const last = await loadState("last");
-  if (last) {
-    await openStored(last);
-    if (showLauncher()) launcherMenu($("files"));
-    return;
-  }
-  const recents = await library();
-  for (const item of recents.slice(0, 5))
-    $("recents").append(
-      button(item.title, () => run(() => openStored(item.id))),
-    );
-}).finally(() => {
-  $("new").disabled = false;
-  $("open").disabled = false;
-});
+  const last = await lastNotebookInfo();
+  lastNotebookID = last?.id;
+  launcher.recent(last?.title, !!last);
+}).catch(() => {});
 function offlineStatus(message) {
   $("offline-status").textContent = message;
   const inMenu = $("offline-menu-status");

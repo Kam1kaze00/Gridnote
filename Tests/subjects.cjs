@@ -23,6 +23,38 @@ const expected = {
   "Computer Science": ["Hex   FF", "0xFD"],
   "Mechanical Engineering": ["40 MPa", "0.2%"],
 };
+const additional = {
+  Chemistry: ["1 mol", "103.93078 kPa"],
+  Physics: ["9 J", "-6 kg·m/s", "58.86 J", "100 m/s"],
+  Medicine: ["front", "surfaces", "pulmonary valve", "cell grows"],
+  Mathematics: ["x = 2", "11", "sample SD 2", "28.274334"],
+  "Electrical Engineering": ["8 V", "100 ms", "31.415927", "50 mJ"],
+  "Mechanical Engineering": ["10 N·m", "2.5132741", "-20 N", "1.2 mm"],
+  "Computer Science": ["0x30", "1048576 B", "1 1 → 1", "11 probes"],
+};
+for (const major of Object.keys(kits)) {
+  expected[major].push(...additional[major]);
+  assert.equal(kits[major].length, 6);
+}
+assert.equal(kits.None, undefined);
+assert.throws(() =>
+  kits.Mathematics.find((t) => t.name === "Linear system").calculate(
+    1,
+    1,
+    1,
+    2,
+    2,
+    2,
+  ),
+);
+assert.throws(() =>
+  kits.Mathematics.find((t) => t.name === "Statistics").calculate("1 apple"),
+);
+assert.throws(() =>
+  kits["Computer Science"]
+    .find((t) => t.name === "Bitwise")
+    .calculate("-1", "OR", "2"),
+);
 for (const [major, tools] of Object.entries(kits))
   for (const [i, t] of tools.entries())
     if (t.calculate) {

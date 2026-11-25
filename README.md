@@ -1,4 +1,4 @@
-![Gridnote wordmark on university graph paper beside a pen tablet](docs/images/gridnote-cover.jpg)
+![Gridnote wordmark on university graph paper beside a pen tablet](web/assets/launcher.jpg)
 
 # Gridnote
 
@@ -24,7 +24,11 @@ Desktop downloads are community builds. The Mac app has an ad hoc signature and 
 
 **If your Mac blocks Gridnote:** Extract the ZIP and try opening Gridnote once. For an unidentified-developer warning, open **System Settings → Privacy & Security → Open Anyway** for Gridnote, then confirm. Both Mac ZIPs contain these steps and a Terminal checksum command. [Apple’s instructions](https://support.apple.com/en-us/102445)
 
-Choose **New Notebook** or open a notebook or PDF. Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
+Gridnote opens to a launcher. Pick a **Major** and preview its six tools, or leave **None** for a regular notebook. **Continue notebook** restores your last notebook, scroll position and zoom. **New notebook** starts a blank page. **Open file** opens a notebook or a PDF. You can switch majors later through **File → Notebook Launcher** on Mac or **Notebook menu → Notebook launcher** on the web.
+
+![Startup screen with a major selected, its six study tools and the option to continue a notebook](docs/images/launcher.png)
+
+Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 
 ## In a lecture
 
@@ -33,10 +37,23 @@ Choose **New Notebook** or open a notebook or PDF. Download the [editable circui
 - Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Use the selector to move, align or resize objects.
 - Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Remove Typed Text** can clean one page or all pages and preserves filled tables and other objects.
 - Choose **Solve**, then tap a highlighted problem. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
-- Choose **Major** on the welcome screen or in the notebook header. **File → Notebook Launcher** on Mac and **Notebook menu → Notebook launcher** on the web let you change it later. Turn on **Show launcher at startup** there if you want it when reopening notes. **None** is the default. Choose a subject to show its study tools. Chemistry has a periodic table and molar-mass calculator. Computer Science has exact base conversion and two’s complement. Physics, Mathematics, Medicine, Electrical Engineering and Mechanical Engineering have focused tools. Results can be inserted into the notebook.
 - **Preview PDF → Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
 
 ![Tablet writing area with contextual highlighter options](docs/images/tablet-notebook.png)
+
+## Major tools
+
+Choose a tool in the row below the writing toolbar. Adjust its inputs and use **Insert** to put the result on the page. The full set works offline.
+
+| Major | Tools |
+| --- | --- |
+| Chemistry | Periodic table, molar mass, molarity, dilution, mass to moles, ideal gas |
+| Physics | Kinematics, net force, kinetic energy, momentum, gravity, waves |
+| Mathematics | Equations, right triangles, two-variable linear systems, dot product, statistics, circles |
+| Electrical Engineering | Ohm’s law, resistors, voltage divider, RC time constant, reactance, capacitor energy |
+| Mechanical Engineering | Axial stress, strain, torque, shaft power, springs, thermal expansion |
+| Computer Science | Number bases, two’s complement, bitwise operations, data sizes, truth tables, binary search |
+| Medicine | Microscopy, anatomical planes, direction terms, tissue types, heart blood flow, cell cycle |
 
 ## Storage and optional AI
 

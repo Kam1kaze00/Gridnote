@@ -38,8 +38,8 @@ import WebKit
       return preferences.toolAppearance(.eraser).symbol
     }
     expect(Set(eraseSymbols).count == 4, "each eraser mode has its own toolbar symbol")
-    preferences.showLauncher = true
-    expect(PenPreferences(defaults: defaults).showLauncher, "startup launcher preference persists")
+    expect(MajorCatalog.tools.count == 7 && MajorCatalog.tools.values.allSatisfy { $0.count == 6 },
+      "every major exposes six shared tools and None exposes no subject tools")
     preferences.restore()
     let storage = NotebookStorage(directory: directory)
     let pb = NSPasteboard.withUniqueName()
@@ -48,6 +48,20 @@ import WebKit
     let canvas = owner.canvas
     GridnoteDelegate.installMenus(owner)
     NSApp.finishLaunching()
+    var launchAction = ""
+    let launchController = LauncherController(preferences: preferences, last: directory.appendingPathComponent("Example.gridnote")) { action, _ in launchAction = action }
+    launchController.showWindow(nil)
+    let launchWeb = launchController.window!.contentView as! WKWebView
+    for _ in 0..<100 where preferences.major != "Physics" {
+      pump(0.06)
+      launchWeb.evaluateJavaScript("(() => { const select = document.querySelector('#welcome-major'); if (select) { select.value = 'Physics'; select.dispatchEvent(new Event('change')); } })()")
+    }
+    expect(preferences.major == "Physics" && launchAction.isEmpty, "startup major selection persists before a notebook is opened")
+    launchWeb.evaluateJavaScript("document.querySelector('#continue').click()")
+    for _ in 0..<100 where launchAction.isEmpty { pump(0.06) }
+    expect(launchAction == "continue", "standalone Mac launcher continues only on request")
+    launchController.dismiss()
+    preferences.major = "None"
     win.setFrame(CGRect(x: 60, y: 40, width: 1024, height: 700), display: true)
     NSApp.activate(ignoringOtherApps: true)
     owner.showWindow(nil)
@@ -523,7 +537,7 @@ import WebKit
       "undo restores removed page and its writing")
     owner.togglePages(nil)
     var inserted = ""
-    let kit = SubjectToolsController(major: "Computer Science") { inserted = $0 }
+    let kit = SubjectToolsController(major: "Computer Science", tool: "Two’s complement") { inserted = $0 }
     let web = kit.view as! WKWebView
     let webWindow = NSWindow(
       contentRect: CGRect(x: 0, y: 0, width: 440, height: 380), styleMask: [.titled],
@@ -535,8 +549,8 @@ import WebKit
       web.evaluateJavaScript("document.getElementById('insert')?.click()")
     }
     expect(
-      inserted.contains("11111111") && inserted.contains("FF"),
-      "native study panel evaluates number bases and inserts its result")
+      inserted.contains("11111101") && inserted.contains("0xFD"),
+      "native shortcut opens the chosen tool and inserts the signed binary result")
     webWindow.orderOut(nil)
     let buttonState = TabletButtons()
     var mapped = buttonState
@@ -561,7 +575,9 @@ import WebKit
     if let demo = ProcessInfo.processInfo.environment["GRIDNOTE_DEMO"] {
       let sample = directory.appendingPathComponent("Series circuit.gridnote")
       try FileManager.default.copyItem(at: URL(fileURLWithPath: demo), to: sample)
+      preferences.major = "Electrical Engineering"
       owner.openFile(sample)
+      canvas.refreshTool()
       win.setFrame(CGRect(x: 60, y: 40, width: 1060, height: 800), display: true)
       owner.fitWidth(nil)
       pump(0.2)

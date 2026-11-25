@@ -25,6 +25,14 @@ async function get(store, key) {
   return request(db.transaction(store).objectStore(store).get(key));
 }
 export const loadState = (key) => get("state", key);
+export async function lastNotebookInfo() {
+  const id = await loadState("last");
+  if (!id) return null;
+  const cached = await loadState("last-title");
+  if (cached?.id === id) return cached;
+  const previous = await get("books", id);
+  return previous ? { id, title: previous.title } : null;
+}
 export async function saveState(key, value) {
   const db = await database,
     tx = db.transaction("state", "readwrite");
@@ -78,6 +86,7 @@ export async function saveRecord(book, title, previousRevision) {
   if (prior) tx.objectStore("recovery").put(prior, book.id);
   files.put({ book: record, title, updated: Date.now() }, book.id);
   tx.objectStore("state").put(book.id, "last");
+  tx.objectStore("state").put({ id: book.id, title }, "last-title");
   await done;
   for (const key of pending) known.add(key);
   return book.revision;

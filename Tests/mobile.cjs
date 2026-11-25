@@ -46,7 +46,9 @@ const { chromium } = require("playwright"),
   });
   await page.goto(process.env.GRIDNOTE_URL || "http://127.0.0.1:8793/");
   assert.equal(await page.locator("#detected-device").isVisible(), false);
+  assert.equal(await page.locator("#welcome-major").inputValue(),"None");
   await page.tap("#new");
+  assert(!(await page.locator("#subject-strip").isVisible()));
   await page.waitForSelector("#sheet");
   const s = page.locator("#sheet");
   const r = await s.boundingBox();

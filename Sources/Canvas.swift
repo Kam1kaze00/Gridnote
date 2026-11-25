@@ -30,10 +30,6 @@ final class PenPreferences {
     "None", "Chemistry", "Physics", "Medicine", "Mathematics", "Electrical Engineering",
     "Computer Science", "Mechanical Engineering",
   ]
-  var showLauncher: Bool {
-    get { defaults.bool(forKey: "ShowNotebookLauncher") }
-    set { defaults.set(newValue, forKey: "ShowNotebookLauncher") }
-  }
   func toolAppearance(_ tool: NoteTool) -> (name: String, symbol: String) {
     switch tool {
     case .brush:
@@ -101,7 +97,6 @@ final class PenPreferences {
       defaults.removeObject(forKey: "PenScrollSpeed")
       defaults.removeObject(forKey: "PaletteVisible")
       defaults.removeObject(forKey: "StudyMajor")
-      showLauncher = false
     }
   }
   var pressure: Double {

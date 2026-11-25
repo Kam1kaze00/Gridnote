@@ -11,7 +11,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   let scrollView = PaperScrollView()
   private let storage: NotebookStorage
   private let preferences: PenPreferences
-  private var session = NotebookSession()
+  private var session: NotebookSession
   private(set) var notebookURL: URL?
   private var lastSavedRevision: UInt64?
   private var notebookSaveError: Error?
@@ -26,7 +26,10 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private var preparingPDF = false
   private lazy var studySolver = StudySolver()
   private var scanID = UUID()
-  private var subjectButton: ChromeButton!
+  var requestLauncher: (() -> Void)?
+  private let subjectScroll = NSScrollView()
+  private var subjectHeight: NSLayoutConstraint!
+  private var displayedMajor: String?
   private var solveButton: ChromeButton!
   private var preview: PDFPreviewController?
   private var settingsPopover: NSPopover?
@@ -66,6 +69,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     clipboard: NSPasteboard = .general
   ) {
     self.storage = storage
+    session = (try? storage.loadSession()) ?? NotebookSession()
     self.preferences = preferences
     canvas = NoteCanvas(preferences: preferences, clipboard: clipboard)
     let window = NSWindow(
@@ -117,18 +121,25 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private func buildInterface() {
     let root = NSView()
     window?.contentView = root
-    for view in [header, toolbar, workArea, footer] { add(view, to: root) }
+    for view in [header, toolbar, subjectScroll, workArea, footer] { add(view, to: root) }
     toolbarHeight = toolbar.heightAnchor.constraint(equalToConstant: 47)
     footerHeight = footer.heightAnchor.constraint(equalToConstant: 34)
-    for view in [header, toolbar, workArea, footer] {
+    for view in [header, toolbar, subjectScroll, workArea, footer] {
       view.leadingAnchor.constraint(equalTo: root.leadingAnchor).isActive = true
       view.trailingAnchor.constraint(equalTo: root.trailingAnchor).isActive = true
     }
+    subjectScroll.drawsBackground = true
+    subjectScroll.backgroundColor = chromeBackground
+    subjectScroll.hasHorizontalScroller = true
+    subjectScroll.scrollerStyle = .overlay
+    subjectScroll.autohidesScrollers = true
+    subjectHeight = subjectScroll.heightAnchor.constraint(equalToConstant: 0)
     NSLayoutConstraint.activate([
+      subjectScroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor), subjectHeight,
       header.topAnchor.constraint(equalTo: root.topAnchor),
       header.heightAnchor.constraint(equalToConstant: 51),
       toolbar.topAnchor.constraint(equalTo: header.bottomAnchor), toolbarHeight,
-      workArea.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+      workArea.topAnchor.constraint(equalTo: subjectScroll.bottomAnchor),
       workArea.bottomAnchor.constraint(equalTo: footer.topAnchor),
       footer.bottomAnchor.constraint(equalTo: root.bottomAnchor), footerHeight,
     ])
@@ -189,12 +200,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     solveButton = ChromeButton(
       "Solve", symbol: "function", style: .outlined, target: self, action: #selector(scanPage(_:)))
     canvas.onStudyPick = { [weak self] problem in self?.studyPanel(problem, "") }
-    subjectButton = ChromeButton(
-      symbol: "graduationcap", target: self, action: #selector(openSubjects(_:)))
-    subjectButton.toolTip = "Study tools"
-    subjectButton.setAccessibilityLabel("Study tools")
     let actions = chromeStack(
-      [statusButton, subjectButton, solveButton, previewButton, exportButton], spacing: 8)
+      [statusButton, solveButton, previewButton, exportButton], spacing: 8)
     for view in [previewButton!, exportButton!] {
       view.setContentCompressionResistancePriority(.required, for: .horizontal)
     }
@@ -462,12 +469,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     exportButton.isHidden = true
   }
 
-  func restoreLastNotebook(showLauncher: Bool = true) {
+  func restoreLastNotebook() {
     do {
       session = try storage.loadSession()
       if let url = session.lastNotebook {
         try openNotebook(url, recovering: true)
-        if showLauncher && preferences.showLauncher { DispatchQueue.main.async { self.notebookLauncher(nil) } }
       }
     } catch { alert("Couldn’t reopen the last notebook", error: error) }
   }
@@ -856,13 +862,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     updateHistory()
     if !pagesSidebar.isHidden { pagesSidebar.update(canvas.notebook, current: page) }
     welcomeMajor.selectItem(withTitle: preferences.major)
-    subjectButton?.isHidden = !canvas.active
-    let majorTitle = preferences.major == "None" ? "Major" : "Study tools"
-    if subjectButton?.caption != majorTitle {
-      subjectButton?.caption = majorTitle
-      subjectButton?.setAccessibilityLabel(majorTitle)
-    }
-    subjectButton?.toolTip = preferences.major == "None" ? "Choose a major" : preferences.major + " study tools"
+    updateSubjectStrip()
     solveButton?.isEnabled = canvas.active && solveButton.caption != "Scanning…"
     solveButton?.selected = !canvas.studyProblems.isEmpty
     for (tool, button) in toolButtons {
@@ -1036,49 +1036,41 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     preferences.major = sender.titleOfSelectedItem ?? "None"
     updateTools()
   }
-  @objc private func toggleStartup(_ sender: NSButton) { preferences.showLauncher = sender.state == .on }
-  @objc private func continueNotebook(_ sender: Any?) { settingsPopover?.performClose(nil) }
-  @objc func notebookLauncher(_ sender: Any?) {
-    guard canvas.active else { welcomeMajor.performClick(nil); return }
-    settingsPopover?.performClose(nil)
-    let panel = NSViewController()
-    panel.view = Surface(chromeToolbar)
-    let picker = NSPopUpButton()
-    configureMajor(picker)
-    let start = NSButton(checkboxWithTitle: "Show launcher at startup", target: self, action: #selector(toggleStartup(_:)))
-    start.state = preferences.showLauncher ? .on : .off
-    let resume = ChromeButton("Continue notebook", symbol: "arrow.right", style: .primary,
-      target: self, action: #selector(continueNotebook(_:)))
-    let open = ChromeButton("Open…", symbol: "folder", target: self, action: #selector(openAny(_:)))
-    let new = ChromeButton("New", symbol: "plus", target: self, action: #selector(newNotebook(_:)))
-    let stack = chromeStack([chromeLabel("Notebook launcher", size: 16, weight: .semibold),
-      chromeStack([chromeLabel("Major", size: 12), picker]), start, chromeStack([resume, open, new])],
-      spacing: 12, horizontal: false)
-    stack.alignment = .leading
-    add(stack, to: panel.view)
-    NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.view.leadingAnchor, constant: 14),
-      stack.topAnchor.constraint(equalTo: panel.view.topAnchor, constant: 12)])
-    let pop = NSPopover()
-    pop.behavior = .transient
-    pop.contentViewController = panel
-    pop.contentSize = NSSize(width: max(275, stack.fittingSize.width + 28), height: stack.fittingSize.height + 26)
-    pop.show(relativeTo: subjectButton.bounds, of: subjectButton, preferredEdge: .minY)
-    settingsPopover = pop
-  }
+  @objc func notebookLauncher(_ sender: Any?) { requestLauncher?() }
 
-  @objc private func openSubjects(_ sender: Any?) {
-    guard preferences.major != "None" else { notebookLauncher(sender); return }
+  private func updateSubjectStrip() {
+    let major = canvas.active ? preferences.major : "None"
+    guard displayedMajor != major else { return }
+    displayedMajor = major
+    let names = MajorCatalog.tools[major] ?? []
+    subjectScroll.isHidden = names.isEmpty
+    subjectHeight.constant = names.isEmpty ? 0 : 36
+    guard !names.isEmpty else { subjectScroll.documentView = nil; return }
+    let label = chromeLabel(major, size: 11, weight: .semibold, color: appAccent)
+    let buttons = names.map { name -> ChromeButton in
+      let button = ChromeButton(name, style: .outlined, target: self, action: #selector(openSubjects(_:)))
+      button.controlHeight = 26
+      return button
+    }
+    let row = chromeStack([label] + buttons, spacing: 6)
+    row.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 4, right: 12)
+    let size = row.fittingSize
+    row.translatesAutoresizingMaskIntoConstraints = true
+    row.frame = NSRect(origin: .zero, size: NSSize(width: size.width, height: 36))
+    subjectScroll.documentView = row
+  }
+  @objc private func openSubjects(_ sender: ChromeButton) {
     settingsPopover?.performClose(nil)
     let pop = NSPopover()
     pop.behavior = .transient
-    let panel = SubjectToolsController(major: preferences.major) { [weak self, weak pop] text in
+    let panel = SubjectToolsController(major: preferences.major, tool: sender.caption) { [weak self, weak pop] text in
       pop?.performClose(nil)
       self?.canvas.insertStudyResult(text)
     }
     _ = panel.view
     pop.contentViewController = panel
     pop.contentSize = panel.preferredContentSize
-    pop.show(relativeTo: subjectButton.bounds, of: subjectButton, preferredEdge: .minY)
+    pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     settingsPopover = pop
   }
   @objc private func scanPage(_ sender: Any?) {

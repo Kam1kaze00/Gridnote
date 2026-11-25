@@ -8,11 +8,12 @@ const { webkit } = require("playwright"),
     const errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
     await p.goto(process.env.GRIDNOTE_URL || "http://127.0.0.1:8793/");
+    await p.getByLabel("Major", {exact:true}).selectOption("Chemistry");
     await p
       .locator("#file")
       .setInputFiles(path.resolve(__dirname, "fixtures/exercise.pdf"));
     await p.waitForSelector("#sheet");
-    assert.equal(await p.locator("#subjects").innerText(), "Major");
+    assert.equal(await p.locator("#subject-strip button").count(),6);
     const saved = async () => {
       await p.waitForTimeout(350);
       return p.evaluate(async () => {
@@ -20,10 +21,7 @@ const { webkit } = require("playwright"),
         return (await s.loadRecord(await s.loadState("last"))).book;
       });
     };
-    await p.click("#subjects");
-    await p.getByLabel("Major", { exact: true }).selectOption("Chemistry");
-    await p.keyboard.press("Escape");
-    await p.click("#subjects");
+    await p.getByRole("button",{name:"Periodic table",exact:true}).click();
     const f = p.frameLocator(".subject-frame");
     await f.getByRole("textbox", { name: "Find an element" }).fill("79");
     assert.match(await f.locator("#result").innerText(), /Gold \(Au\)/);
@@ -47,7 +45,8 @@ const { webkit } = require("playwright"),
     n = await saved();
     assert(n.objects[0].content.text._0.includes("Gold"));
     await p.reload();
-    await p.waitForSelector("#subjects");
+    await p.click("#continue");
+    await p.waitForSelector("#subject-strip");
     await p.click("#preview");
     await p.waitForFunction(() =>
       document.querySelector("#pdfcount")?.textContent.includes("/ 3"),

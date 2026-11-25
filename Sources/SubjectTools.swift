@@ -15,9 +15,11 @@ final class StudyInsertHandler: NSObject, WKScriptMessageHandler {
 
 final class SubjectToolsController: NSViewController {
   let major: String
+  let tool: String?
   let handler = StudyInsertHandler()
-  init(major: String, insert: @escaping (String) -> Void) {
+  init(major: String, tool: String? = nil, insert: @escaping (String) -> Void) {
     self.major = major
+    self.tool = tool
     super.init(nibName: nil, bundle: nil)
     handler.insert = insert
   }
@@ -35,6 +37,7 @@ final class SubjectToolsController: NSViewController {
       ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
       .appendingPathComponent("web/subjects.html")
     var parts = URLComponents(url: url.absoluteURL, resolvingAgainstBaseURL: true)
+    if let tool { parts?.queryItems = [URLQueryItem(name: "tool", value: tool)] }
     parts?.fragment = major
     if let target = parts?.url {
       web.loadFileURL(target, allowingReadAccessTo: url.deletingLastPathComponent())

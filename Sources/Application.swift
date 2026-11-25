@@ -1,37 +1,62 @@
 import AppKit
 
 final class GridnoteDelegate: NSObject, NSApplicationDelegate {
+  private let storage = NotebookStorage()
+  private let preferences = PenPreferences()
   private var notebook: NotebookWindow?
+  private var launcher: LauncherController?
   private var pendingFile: URL?
+  private var ready = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    let controller = NotebookWindow()
-    notebook = controller
-    Self.installMenus(controller)
+    ready = true
     NSEvent.isMouseCoalescingEnabled = false
-    controller.showWindow(nil)
-    controller.window?.makeKeyAndOrderFront(nil)
-    controller.restoreLastNotebook(showLauncher: pendingFile == nil)
-    if let pendingFile {
-      controller.openFile(pendingFile)
-      self.pendingFile = nil
-    }
+    if let url = pendingFile { pendingFile = nil; start("open", url) }
+    else { showLauncher() }
     NSApp.activate(ignoringOtherApps: true)
+  }
+
+  private func showLauncher() {
+    if let launcher { launcher.showWindow(nil); launcher.window?.makeKeyAndOrderFront(nil); return }
+    guard notebook?.checkpoint() != false else { return }
+    let last = notebook?.notebookURL ?? (try? storage.loadSession())?.lastNotebook
+    preferences.detectDevice()
+    let screen = LauncherController(preferences: preferences, last: last) { [weak self] action, url in
+      self?.start(action, url)
+    }
+    launcher = screen
+    screen.installMenus()
+    notebook?.window?.orderOut(nil)
+    screen.showWindow(nil)
+    screen.window?.makeKeyAndOrderFront(nil)
+  }
+
+  private func start(_ action: String, _ url: URL?) {
+    let editor = notebook ?? NotebookWindow(storage: storage, preferences: preferences)
+    notebook = editor
+    editor.requestLauncher = { [weak self] in self?.showLauncher() }
+    launcher?.dismiss()
+    launcher = nil
+    Self.installMenus(editor)
+    editor.showWindow(nil)
+    editor.window?.makeKeyAndOrderFront(nil)
+    switch action {
+    case "open": if let url { editor.openFile(url) }
+    case "new": editor.newNotebook(nil)
+    default: if editor.notebookURL == nil { editor.restoreLastNotebook() }
+    }
+    editor.canvas.refreshTool()
   }
 
   func application(_ application: NSApplication, open urls: [URL]) {
     guard let file = urls.first else { return }
-    if let notebook {
-      notebook.showWindow(nil)
-      notebook.openFile(file)
-    } else {
-      pendingFile = file
-    }
+    if ready { start("open", file) } else { pendingFile = file }
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-    notebook?.showWindow(nil)
-    notebook?.window?.makeKeyAndOrderFront(nil)
+    if let launcher { launcher.showWindow(nil); launcher.window?.makeKeyAndOrderFront(nil) }
+    else if let editor = notebook, hasVisibleWindows { editor.window?.makeKeyAndOrderFront(nil) }
+    else { showLauncher() }
     return true
   }
 
