@@ -118,11 +118,19 @@ const stocks = {
     font: "Pixel",
   },
 };
+const requestedFolioFonts = new Set();
 function drawFolio(ctx, page, design) {
   const stock = stocks[design.stationery];
   if (stock) {
     ctx.fillStyle = ctx.strokeStyle = stock.number;
     ctx.font = "bold 10px " + stock.font;
+    if (!requestedFolioFonts.has(stock.font)) {
+      requestedFolioFonts.add(stock.font);
+      const font = "bold 10px " + stock.font;
+      if (!document.fonts.check(font)) {
+        document.fonts.load(font).then(() => window.dispatchEvent(new Event("gridnote-paper-loaded"))).catch(() => {});
+      }
+    }
     ctx.fillText(String(page + 1).padStart(2, "0"), 12, 24);
     if (design.stationery === "Tokyo Neon") {
       ctx.lineWidth = 0.8;

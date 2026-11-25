@@ -166,3 +166,4 @@ if (tools.some((t) => t.name === requestedTool))
   $("tool").value = requestedTool;
 $("tool").onchange = render;
 render();
+document.body.hidden = false;
