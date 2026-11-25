@@ -50,15 +50,27 @@ const engines = require("playwright");
       throw Error("Saved notebook did not reach the expected image dimensions");
     }
     const original = await waitFrame(() => true);
-    assert(
-      Math.abs(original[1][0] - 900) < 0.25 &&
-        Math.abs(original[1][1] - 450) < 0.25,
-      "oversized image inserted at original logical size",
-    );
-    assert.equal(original[0][0], 0);
+    const pageWidth = (210 * 72) / 25.4;
+    async function expectedSize(w, h) {
+      const visible = await page.locator("#view").evaluate(el => {
+        const zoomedWidth = document.getElementById("world").getBoundingClientRect().width;
+        return [el.clientWidth / zoomedWidth, el.clientHeight / zoomedWidth];
+      });
+      const factor = Math.min(1, (150 * 72 / 25.4) / w, (100 * 72 / 25.4) / h,
+        visible[0] * pageWidth * 0.85 / w, visible[1] * pageWidth * 0.6 / h);
+      return [w * factor, h * factor];
+    }
+    const expected = await expectedSize(900, 450);
+    assert(original[1].every((v, i) => Math.abs(v - expected[i]) < 0.25));
+    assert(original[0][0] > 0 && original[0][0] + original[1][0] < pageWidth);
+    const stored = await page.evaluate(async () => {
+      const s = await import("./store.mjs");
+      return (await s.loadRecord(await s.loadState("last"))).book.objects[0].content.image._0;
+    });
+    assert.equal(stored, pixels, "placing a smaller photo preserves the PNG pixels");
     await page.click("#selection");
     await page.getByRole("button", { name: "Fit image to page" }).click();
-    const fitted = await waitFrame((f) => f[1][0] < 595);
+    const fitted = await waitFrame((f) => f[1][0] > original[1][0] + 1);
     assert(Math.abs(fitted[1][0] / fitted[1][1] - 2) < 0.001);
     const handle = await page.locator("#world").evaluate((world, f) => {
       const r = world.getBoundingClientRect(),
@@ -82,6 +94,39 @@ const engines = require("playwright");
     await waitFrame((f) => Math.abs(f[1][0] - fitted[1][0]) < 0.01);
     await page.click("#undo");
     await waitFrame((f) => f[1][0] === original[1][0]);
+    // Exercise an external clipboard paste, including placement on the second page at higher zoom.
+    await page.click("#page");
+    await page.getByRole("button", {name: "Insert page after", exact: true}).click();
+    await page.click("#page");
+    await page.click("#zoomin");
+    async function pasteBitmap(width, height) {
+      await page.evaluate(async ([w, h]) => {
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const blob = await new Promise(resolve => c.toBlob(resolve));
+        const clipboard = new DataTransfer();
+        clipboard.items.add(new File([blob], "portrait.png", { type: "image/png" }));
+        const event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", { value: clipboard });
+        document.querySelector("#sheet").dispatchEvent(event);
+      }, [width, height]);
+    }
+    await pasteBitmap(800, 2400);
+    const portrait = await waitFrame(f => f[1][1] > f[1][0]);
+    const target = await expectedSize(600, 1800);
+    assert(portrait[1].every((v, i) => Math.abs(v - target[i]) < 0.25));
+    const H = 297 * 72 / 25.4;
+    assert(portrait[0][1] >= H && portrait[0][1] + portrait[1][1] < 2 * H);
+    // Paste just above the next page break and verify the complete image is visible on this page.
+    await page.locator("#view").evaluate((view, h) => {
+      const scale = document.getElementById("world").getBoundingClientRect().width / (210 * 72 / 25.4);
+      view.scrollTop = (2 * h - 105) * scale;
+    }, H);
+    await pasteBitmap(1600, 1200);
+    const nearBreak = await waitFrame(f => f[1][0] > f[1][1] && f[0][1] > H);
+    assert(nearBreak[0][1] + nearBreak[1][1] <= 2 * H - 5 * 72 / 25.4 + 0.1);
+    await pasteBitmap(80, 40);
+    await waitFrame(f => Math.abs(f[1][0] - 60) < 0.1 && Math.abs(f[1][1] - 30) < 0.1);
     const measured = await page.evaluate(async () => {
       const { imageSize } = await import("./image-size.mjs");
       const { resizeGuides } = await import("./blocks.mjs");
@@ -123,7 +168,7 @@ const engines = require("playwright");
     console.log(
       "PASS",
       engine,
-      "original-size image insertion, explicit fit and undo, Retina density and resize alignment guides",
+      "bounded import and portrait paste, native-size small crops, original PNG pixels, fit/undo, Retina density and resize guides",
     );
   } finally {
     await browser.close();

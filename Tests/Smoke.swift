@@ -359,6 +359,23 @@ import WebKit
       canvas.notebook.objects.count == 1 && canvas.effectiveTool == .selector,
       "pasted screenshot is a movable selected object")
     let imageID = canvas.notebook.objects[0].id
+    let placedImage = canvas.notebook.objects[0]
+    let naturalImage = try PaperRenderer.importImage(data)
+    let placementScale = min(1, (150 * 72 / 25.4) / naturalImage.size.width,
+      (100 * 72 / 25.4) / naturalImage.size.height,
+      0.85 * canvas.visibleRect.width / naturalImage.size.width,
+      0.6 * canvas.visibleRect.height / naturalImage.size.height)
+    expect(abs(placedImage.frame.width - naturalImage.size.width * placementScale) < 0.1
+      && abs(placedImage.frame.height - naturalImage.size.height * placementScale) < 0.1
+      && placedImage.content == .image(naturalImage.data), "pasted image fits the page and retains its pixels")
+    canvas.fitSelectedImage(nil)
+    let enlarged = canvas.selectedObject!
+    canvas.copy(nil)
+    canvas.paste(nil)
+    expect(canvas.selectedObject!.frame.width < enlarged.frame.width &&
+      canvas.selectedObject!.id != enlarged.id, "a copied large photo also pastes at the notebook size limit")
+    owner.undoEdit(nil)
+    owner.undoEdit(nil)
     _ = key("q", 12)
     stroke([(90, 168), (108, 172), (114, 166), (131, 179), (144, 160)])
     let firstInk = canvas.notebook.objects.last!
