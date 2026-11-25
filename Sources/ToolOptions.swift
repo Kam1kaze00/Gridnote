@@ -183,6 +183,7 @@ final class ToolOptionsController: NSViewController {
   @objc private func nibChanged(_ sender: NSSegmentedControl) {
     preferences.nib = ["Pen", "Brush", "Fineliner"][sender.selectedSegment]
     syncPressure()
+    canvas.refreshTool()
   }
   @objc private func pressureChanged(_ sender: NSButton) {
     preferences.usePressure = sender.state == .on
@@ -202,9 +203,13 @@ final class ToolOptionsController: NSViewController {
   }
   @objc private func shapeChanged(_ s: NSSegmentedControl) {
     preferences.shape = ShapeKind.allCases[s.selectedSegment]
+    canvas.refreshTool()
   }
   @objc private func constrainChanged(_ s: NSButton) { preferences.constrain = s.state == .on }
-  @objc private func codeChanged(_ s: NSButton) { preferences.code = s.state == .on }
+  @objc private func codeChanged(_ s: NSButton) {
+    preferences.code = s.state == .on
+    canvas.refreshTool()
+  }
   @objc private func guidesChanged(_ s: NSButton) { preferences.guides = s.state == .on }
   private func tableOptions() {
     let selected = canvas.selectedObject
@@ -243,6 +248,7 @@ final class ToolOptionsController: NSViewController {
       rows: tableFields[0].integerValue, columns: tableFields[1].integerValue,
       header: headerCheck?.state == .on,
       size: CGSize(width: tableFields[2].doubleValue, height: tableFields[3].doubleValue))
+    canvas.refreshTool()
   }
 
   private func segment(_ title: String, labels: [String], selected: Int, action: Selector) {
@@ -280,6 +286,7 @@ final class ToolOptionsController: NSViewController {
   }
   @objc private func alignment(_ sender: NSSegmentedControl) {
     preferences.textAlignment = TypeAlignment.allCases[sender.selectedSegment]
+    canvas.refreshTool()
   }
   @objc private func filterChanged(_ sender: NSButton) {
     if sender.state == .on {

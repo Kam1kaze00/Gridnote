@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/Kam1kaze00/Gridnote/discussions/categories/q-a
+    about: Get help with your notebook or pen.
+  - name: Suggest an idea
+    url: https://github.com/Kam1kaze00/Gridnote/discussions/categories/ideas
+    about: Tell us what would make taking notes or solving exercises easier.

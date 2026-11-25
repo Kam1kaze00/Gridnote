@@ -790,3 +790,5 @@ footer #selection {
 #popover:has(iframe[data-major="Chemistry"]) {
   width: min(660px, calc(100vw - 14px));
 }
+
+#toolset .glyph { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; }

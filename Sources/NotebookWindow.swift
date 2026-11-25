@@ -48,6 +48,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private var colorButtons: [ChromeButton] = []
   private var palette: NSStackView!
   private var paletteButton: ChromeButton!
+  private var welcomeMajor = NSPopUpButton()
   private var deviceLabel: NSTextField!
   private var selectionActions: ChromeButton!
   private var paperButton: ChromeButton!
@@ -394,9 +395,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     new.controlHeight = 35
     open.controlHeight = 35
     deviceLabel = chromeLabel(preferences.deviceDescription, size: 12, color: chromeMuted)
+    configureMajor(welcomeMajor)
+    let majorRow = chromeStack([chromeLabel("Major", size: 12), welcomeMajor], spacing: 8)
     let row = chromeStack([new, open], spacing: 9)
     let column = chromeStack(
-      [glyph, title, line, deviceLabel, row], spacing: 10, horizontal: false)
+      [glyph, title, line, deviceLabel, majorRow, row], spacing: 10, horizontal: false)
     column.alignment = .centerX
     column.setCustomSpacing(13, after: glyph)
     column.setCustomSpacing(22, after: line)
@@ -459,10 +462,13 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     exportButton.isHidden = true
   }
 
-  func restoreLastNotebook() {
+  func restoreLastNotebook(showLauncher: Bool = true) {
     do {
       session = try storage.loadSession()
-      if let url = session.lastNotebook { try openNotebook(url, recovering: true) }
+      if let url = session.lastNotebook {
+        try openNotebook(url, recovering: true)
+        if showLauncher && preferences.showLauncher { DispatchQueue.main.async { self.notebookLauncher(nil) } }
+      }
     } catch { alert("Couldn’t reopen the last notebook", error: error) }
   }
 
@@ -558,6 +564,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   }
 
   @objc func newNotebook(_ sender: Any?) {
+    settingsPopover?.performClose(nil)
     do {
       guard commitCurrent() else { return }
       let url = try storage.localURL(named: "Untitled Notebook")
@@ -568,6 +575,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   }
 
   @objc func openAny(_ sender: Any?) {
+    settingsPopover?.performClose(nil)
     let panel = NSOpenPanel()
     panel.allowedContentTypes = [.gridnote, .pdf]
     panel.directoryURL = notebookURL?.deletingLastPathComponent()
@@ -847,10 +855,27 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     guard palette != nil, fitButton != nil else { return }
     updateHistory()
     if !pagesSidebar.isHidden { pagesSidebar.update(canvas.notebook, current: page) }
-    subjectButton?.isHidden = !canvas.active || preferences.major == "None"
+    welcomeMajor.selectItem(withTitle: preferences.major)
+    subjectButton?.isHidden = !canvas.active
+    let majorTitle = preferences.major == "None" ? "Major" : "Study tools"
+    if subjectButton?.caption != majorTitle {
+      subjectButton?.caption = majorTitle
+      subjectButton?.setAccessibilityLabel(majorTitle)
+    }
+    subjectButton?.toolTip = preferences.major == "None" ? "Choose a major" : preferences.major + " study tools"
     solveButton?.isEnabled = canvas.active && solveButton.caption != "Scanning…"
     solveButton?.selected = !canvas.studyProblems.isEmpty
-    for (tool, button) in toolButtons { button.selected = tool == canvas.effectiveTool }
+    for (tool, button) in toolButtons {
+      let appearance = preferences.toolAppearance(tool)
+      if button.symbol != appearance.symbol { button.symbol = appearance.symbol }
+      let family = tool == .marker ? "Highlighter" : tool.rawValue.capitalized
+      let detail = tool == .marker ? markerColors[preferences.markerIndex].0 : appearance.name
+      let label = family == detail ? family : family + " · " + detail
+      button.toolTip = label + (button.shortcut.map { " (" + $0 + ")" } ?? "")
+      if button.accessibilityLabel() != label { button.setAccessibilityLabel(label) }
+      if tool == .marker { button.textColor = markerColors[preferences.markerIndex].1.ns }
+      button.selected = tool == canvas.effectiveTool
+    }
     selectionActions.isHidden = canvas.effectiveTool != .selector || !canvas.hasSelection
     selectionActions.caption = "\(canvas.selectionCount) selected"
     let compact = (window?.frame.width ?? 1000) < 900
@@ -858,7 +883,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       let name = compact ? "" : tool.rawValue.capitalized
       if b.caption != name {
         b.caption = name
-        b.setAccessibilityLabel(tool.rawValue.capitalized)
+        b.setAccessibilityLabel(b.toolTip ?? tool.rawValue.capitalized)
       }
     }
     palette.isHidden = !preferences.paletteVisible
@@ -1000,8 +1025,49 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     updateHistory()
   }
 
+  private func configureMajor(_ picker: NSPopUpButton) {
+    picker.addItems(withTitles: PenPreferences.majors)
+    picker.selectItem(withTitle: preferences.major)
+    picker.setAccessibilityLabel("Major")
+    picker.target = self
+    picker.action = #selector(pickMajor(_:))
+  }
+  @objc private func pickMajor(_ sender: NSPopUpButton) {
+    preferences.major = sender.titleOfSelectedItem ?? "None"
+    updateTools()
+  }
+  @objc private func toggleStartup(_ sender: NSButton) { preferences.showLauncher = sender.state == .on }
+  @objc private func continueNotebook(_ sender: Any?) { settingsPopover?.performClose(nil) }
+  @objc func notebookLauncher(_ sender: Any?) {
+    guard canvas.active else { welcomeMajor.performClick(nil); return }
+    settingsPopover?.performClose(nil)
+    let panel = NSViewController()
+    panel.view = Surface(chromeToolbar)
+    let picker = NSPopUpButton()
+    configureMajor(picker)
+    let start = NSButton(checkboxWithTitle: "Show launcher at startup", target: self, action: #selector(toggleStartup(_:)))
+    start.state = preferences.showLauncher ? .on : .off
+    let resume = ChromeButton("Continue notebook", symbol: "arrow.right", style: .primary,
+      target: self, action: #selector(continueNotebook(_:)))
+    let open = ChromeButton("Open…", symbol: "folder", target: self, action: #selector(openAny(_:)))
+    let new = ChromeButton("New", symbol: "plus", target: self, action: #selector(newNotebook(_:)))
+    let stack = chromeStack([chromeLabel("Notebook launcher", size: 16, weight: .semibold),
+      chromeStack([chromeLabel("Major", size: 12), picker]), start, chromeStack([resume, open, new])],
+      spacing: 12, horizontal: false)
+    stack.alignment = .leading
+    add(stack, to: panel.view)
+    NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.view.leadingAnchor, constant: 14),
+      stack.topAnchor.constraint(equalTo: panel.view.topAnchor, constant: 12)])
+    let pop = NSPopover()
+    pop.behavior = .transient
+    pop.contentViewController = panel
+    pop.contentSize = NSSize(width: max(275, stack.fittingSize.width + 28), height: stack.fittingSize.height + 26)
+    pop.show(relativeTo: subjectButton.bounds, of: subjectButton, preferredEdge: .minY)
+    settingsPopover = pop
+  }
+
   @objc private func openSubjects(_ sender: Any?) {
-    guard preferences.major != "None" else { return }
+    guard preferences.major != "None" else { notebookLauncher(sender); return }
     settingsPopover?.performClose(nil)
     let pop = NSPopover()
     pop.behavior = .transient
@@ -1182,7 +1248,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
-    case #selector(newNotebook(_:)), #selector(openAny(_:)), #selector(wacomSetup(_:)),
+    case #selector(newNotebook(_:)), #selector(openAny(_:)), #selector(notebookLauncher(_:)), #selector(wacomSetup(_:)),
       #selector(quickGuide(_:)):
       return true
     case #selector(deletePage(_:)): return notebookURL != nil && page < canvas.notebook.usedPages

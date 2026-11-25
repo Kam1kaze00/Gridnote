@@ -28,6 +28,19 @@ import WebKit
     let directory = qa.appendingPathComponent("session-" + UUID().uuidString, isDirectory: true)
     let defaults = UserDefaults(suiteName: "gridnote.qa." + UUID().uuidString)!
     let preferences = PenPreferences(defaults: defaults)
+    let brushSymbols = ["Pen", "Brush", "Fineliner"].map { tip in
+      preferences.nib = tip
+      return preferences.toolAppearance(.brush).symbol
+    }
+    expect(Set(brushSymbols).count == 3, "each writing tip has its own toolbar symbol")
+    let eraseSymbols = EraseMode.allCases.map { mode in
+      preferences.eraseMode = mode
+      return preferences.toolAppearance(.eraser).symbol
+    }
+    expect(Set(eraseSymbols).count == 4, "each eraser mode has its own toolbar symbol")
+    preferences.showLauncher = true
+    expect(PenPreferences(defaults: defaults).showLauncher, "startup launcher preference persists")
+    preferences.restore()
     let storage = NotebookStorage(directory: directory)
     let pb = NSPasteboard.withUniqueName()
     let owner = NotebookWindow(storage: storage, preferences: preferences, clipboard: pb)

@@ -16,7 +16,7 @@ source_files = """
     app.mjs blocks.mjs camera.mjs devices.mjs elements.js engine.mjs eraser.mjs
     guide.html index.html majors.js manifest.webmanifest pages.mjs render.mjs
     solver.js store.mjs study-geometry.mjs study.mjs style.css subjects.html subjects.js
-    assets/icon-192.png assets/icon-512.png assets/maskable-512.png
+    assets/tools.svg assets/icon-192.png assets/icon-512.png assets/maskable-512.png
 """.split()
 packages = {
     'pdfjs-dist': ('5.6.205', 'tlUj+2IDa7G1SbvBNN74UHRLJybZDWYom+k6p5KIZl7huBvsA4APi6mKL+zCxd3tLjN5hOOEE9Tv7VdzO88pfg=='),

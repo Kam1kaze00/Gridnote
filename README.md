@@ -1,14 +1,14 @@
-<p align="center"><img src="web/assets/icon-192.png" width="74" alt="Gridnote logo"></p>
+![Gridnote wordmark on university graph paper beside a pen tablet](docs/images/gridnote-cover.jpg)
 
 # Gridnote
 
 Paste an exercise, solve it by hand, and share the finished A4 pages. Gridnote saves locally and reopens at the same place.
 
+[Open the notebook](https://kam1kaze00.github.io/Gridnote/) · [Download Gridnote](https://github.com/Kam1kaze00/Gridnote/releases/latest) · [Ask a question](https://github.com/Kam1kaze00/Gridnote/discussions/categories/q-a) · [Suggest an idea](https://github.com/Kam1kaze00/Gridnote/discussions/categories/ideas)
+
 ![Gridnote on Mac with a circuit exercise, handwritten solution and table of values](docs/images/mac-notebook.png)
 
 ## Get started
-
-[Open Gridnote in your browser](https://kam1kaze00.github.io/Gridnote/) · [All desktop downloads and checksums](https://github.com/Kam1kaze00/Gridnote/releases/latest)
 
 | Device | First launch |
 | --- | --- |
@@ -22,16 +22,18 @@ On the web, **Ready offline** appears on the launcher and in the notebook menu a
 
 Desktop downloads are community builds. The Mac app has an ad hoc signature and has not been notarized by Apple. The Windows executable is unsigned. Gatekeeper or SmartScreen may restrict first launch. The browser app is available on managed devices where downloads are restricted. [Apple distribution guidance](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) · [Microsoft SmartScreen guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
+**If your Mac blocks Gridnote:** Extract the ZIP and try opening Gridnote once. For an unidentified-developer warning, open **System Settings → Privacy & Security → Open Anyway** for Gridnote, then confirm. Both Mac ZIPs contain these steps and a Terminal checksum command. [Apple’s instructions](https://support.apple.com/en-us/102445)
+
 Choose **New Notebook** or open a notebook or PDF. Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 
 ## In a lecture
 
-- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Brush includes Pen, Brush and Fineliner, smoothing and optional pressure response.
+- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. Brush includes Pen, Brush and Fineliner, smoothing and optional pressure response.
 - On a two-button pen, tap the upper switch, erase, then lift to return to Brush. Hold the lower switch and move vertically to scroll.
 - Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Use the selector to move, align or resize objects.
 - Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Remove Typed Text** can clean one page or all pages and preserves filled tables and other objects.
 - Choose **Solve**, then tap a highlighted problem. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
-- In writing settings, **Major** defaults to **None**. Choose a subject to show its study tools. Chemistry has a periodic table and molar-mass calculator. Computer Science has exact base conversion and two’s complement. Physics, Mathematics, Medicine, Electrical Engineering and Mechanical Engineering have focused tools. Results can be inserted into the notebook.
+- Choose **Major** on the welcome screen or in the notebook header. **File → Notebook Launcher** on Mac and **Notebook menu → Notebook launcher** on the web let you change it later. Turn on **Show launcher at startup** there if you want it when reopening notes. **None** is the default. Choose a subject to show its study tools. Chemistry has a periodic table and molar-mass calculator. Computer Science has exact base conversion and two’s complement. Physics, Mathematics, Medicine, Electrical Engineering and Mechanical Engineering have focused tools. Results can be inserted into the notebook.
 - **Preview PDF → Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
 
 ![Tablet writing area with contextual highlighter options](docs/images/tablet-notebook.png)

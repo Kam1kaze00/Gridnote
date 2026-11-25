@@ -43,6 +43,7 @@ final class ChromeButton: NSButton {
       needsDisplay = true
     }
   }
+  private let fallbackSymbol: String?
   var shortcut: String?
   var style: Style
   var selected = false { didSet { needsDisplay = true } }
@@ -60,6 +61,7 @@ final class ChromeButton: NSButton {
     style: Style = .plain, target: AnyObject?, action: Selector?
   ) {
     self.caption = caption
+    self.fallbackSymbol = symbol
     self.symbol = symbol
     self.shortcut = shortcut
     self.style = style
@@ -153,7 +155,8 @@ final class ChromeButton: NSButton {
     let badgeWidth: CGFloat = shortcut == nil ? 0 : 21
     var x = max(5, (bounds.width - titleSize.width - iconWidth - badgeWidth) / 2)
     if let symbol,
-      let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+      let image = (NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        ?? fallbackSymbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) })?
         .withSymbolConfiguration(
           NSImage.SymbolConfiguration(pointSize: 12, weight: .medium).applying(
             .init(paletteColors: [foreground])))

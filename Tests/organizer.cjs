@@ -12,7 +12,7 @@ const { webkit } = require("playwright"),
       .locator("#file")
       .setInputFiles(path.resolve(__dirname, "fixtures/exercise.pdf"));
     await p.waitForSelector("#sheet");
-    assert(!(await p.locator("#subjects").isVisible()));
+    assert.equal(await p.locator("#subjects").innerText(), "Major");
     const saved = async () => {
       await p.waitForTimeout(350);
       return p.evaluate(async () => {
@@ -20,7 +20,7 @@ const { webkit } = require("playwright"),
         return (await s.loadRecord(await s.loadState("last"))).book;
       });
     };
-    await p.click("#settings");
+    await p.click("#subjects");
     await p.getByLabel("Major", { exact: true }).selectOption("Chemistry");
     await p.keyboard.press("Escape");
     await p.click("#subjects");

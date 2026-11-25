@@ -11,7 +11,7 @@ final class GridnoteDelegate: NSObject, NSApplicationDelegate {
     NSEvent.isMouseCoalescingEnabled = false
     controller.showWindow(nil)
     controller.window?.makeKeyAndOrderFront(nil)
-    controller.restoreLastNotebook()
+    controller.restoreLastNotebook(showLauncher: pendingFile == nil)
     if let pendingFile {
       controller.openFile(pendingFile)
       self.pendingFile = nil
@@ -73,6 +73,7 @@ final class GridnoteDelegate: NSObject, NSApplicationDelegate {
     add(app, "Quit Gridnote", #selector(NSApplication.terminate(_:)), "q")
 
     let file = submenu("File")
+    add(file, "Notebook Launcher…", #selector(owner.notebookLauncher(_:)), target: owner)
     add(file, "New Notebook", #selector(owner.newNotebook(_:)), "n", target: owner)
     add(file, "Open Notebook or PDF…", #selector(owner.openAny(_:)), "o", target: owner)
     add(file, "Close Window", #selector(NSWindow.performClose(_:)), "w")
@@ -110,6 +111,7 @@ final class GridnoteDelegate: NSObject, NSApplicationDelegate {
     add(edit, "Delete This Page", #selector(owner.deletePage(_:)), target: owner)
 
     let tools = submenu("Tools")
+    add(tools, "Choose Major…", #selector(owner.notebookLauncher(_:)), target: owner)
     add(tools, "Brush", #selector(owner.brushTool(_:)), target: owner)
     add(tools, "Selector", #selector(owner.selectorTool(_:)), target: owner)
     add(tools, "Eraser", #selector(owner.eraserTool(_:)), target: owner)

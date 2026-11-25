@@ -1,0 +1,20 @@
+Opening Gridnote on Mac
+
+1. Extract the ZIP. Move Gridnote.app to Applications and double-click it.
+2. If macOS says it cannot verify the developer, dismiss the alert. Open
+   System Settings → Privacy & Security, scroll down to Security, then choose
+   Open Anyway for Gridnote. Confirm Open and authenticate if macOS asks.
+3. macOS remembers the approval for this app. On a school-managed Mac,
+   the administrator can restrict this option. The browser edition is at
+   https://kam1kaze00.github.io/Gridnote/ and can open editable .gridnote files.
+
+This release uses an ad hoc signature. Apple has not notarized it.
+If the alert reports malware or a damaged file, download a fresh copy from
+https://github.com/Kam1kaze00/Gridnote/releases/latest and verify the ZIP.
+
+Optional Terminal check: in the folder containing your ZIP, run
+  shasum -a 256 Gridnote-macOS-arm64.zip
+For an Intel Mac, replace arm64 with x86_64. Compare the result with the
+matching filename in SHA256SUMS.txt on the same release page.
+
+Apple’s instructions: https://support.apple.com/en-us/102445

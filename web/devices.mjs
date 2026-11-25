@@ -43,6 +43,11 @@ export const majors = [
   "Computer Science",
   "Mechanical Engineering",
 ];
+export const showLauncher = () => prefs.showLauncher === true;
+export function startupLauncher(enabled) {
+  prefs.showLauncher = enabled;
+  remember();
+}
 export const major = () =>
   majors.includes(prefs.major) ? prefs.major : "None";
 export function chooseMajor(v) {

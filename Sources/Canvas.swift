@@ -30,6 +30,28 @@ final class PenPreferences {
     "None", "Chemistry", "Physics", "Medicine", "Mathematics", "Electrical Engineering",
     "Computer Science", "Mechanical Engineering",
   ]
+  var showLauncher: Bool {
+    get { defaults.bool(forKey: "ShowNotebookLauncher") }
+    set { defaults.set(newValue, forKey: "ShowNotebookLauncher") }
+  }
+  func toolAppearance(_ tool: NoteTool) -> (name: String, symbol: String) {
+    switch tool {
+    case .brush:
+      return (nib, nib == "Brush" ? "paintbrush.pointed" : nib == "Fineliner" ? "pencil.line" : "pencil.tip")
+    case .selector:
+      return (selectionMode.rawValue, [.tap: "cursorarrow", .box: "rectangle.dashed", .lasso: "lasso"][selectionMode]!)
+    case .eraser:
+      return (eraseMode.rawValue, [.regular: "eraser", .stroke: "eraser.fill", .box: "square.dashed", .lasso: "lasso"][eraseMode]!)
+    case .text:
+      if code { return ("Code", "chevron.left.forwardslash.chevron.right") }
+      return ("Text", [.natural: "textformat", .left: "text.alignleft", .center: "text.aligncenter", .right: "text.alignright"][textAlignment]!)
+    case .marker: return ("Highlighter", "highlighter")
+    case .shapes:
+      return (shape.rawValue, [.line: "line.diagonal", .arrow: "arrow.up.right", .rectangle: "rectangle", .ellipse: "oval"][shape]!)
+    case .table: return (tableHeader ? "Table with header" : "Table", tableHeader ? "rectangle.topthird.inset.filled" : "tablecells")
+    }
+  }
+
   var major: String {
     get {
       defaults.string(forKey: "StudyMajor").flatMap { Self.majors.contains($0) ? $0 : nil }
@@ -79,6 +101,7 @@ final class PenPreferences {
       defaults.removeObject(forKey: "PenScrollSpeed")
       defaults.removeObject(forKey: "PaletteVisible")
       defaults.removeObject(forKey: "StudyMajor")
+      showLauncher = false
     }
   }
   var pressure: Double {
@@ -157,12 +180,13 @@ final class PenPreferences {
     get { defaults.object(forKey: "AlignmentGuides") as? Bool ?? true }
     set { defaults.set(newValue, forKey: "AlignmentGuides") }
   }
+  private var tableHeader: Bool { defaults.object(forKey: "TableHeader") as? Bool ?? true }
   var grid: TableGrid {
     get {
       TableGrid(
         rows: defaults.object(forKey: "TableRows") as? Int ?? 3,
         columns: defaults.object(forKey: "TableColumns") as? Int ?? 3,
-        header: defaults.object(forKey: "TableHeader") as? Bool ?? true)
+        header: tableHeader)
     }
     set {
       defaults.set(newValue.rows, forKey: "TableRows")

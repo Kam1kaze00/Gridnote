@@ -67,6 +67,8 @@ import {
   majors,
   major,
   chooseMajor,
+  showLauncher,
+  startupLauncher,
   settings,
   setting,
   deviceHelp,
@@ -91,13 +93,13 @@ const view = $("view"),
   pop = $("popover"),
   ctx = sheet.getContext("2d");
 const toolNames = {
-  brush: ["Brush", "Q", "✎"],
-  selector: ["Selector", "W", "⌖"],
-  eraser: ["Eraser", "E", "◇"],
-  text: ["Text", "R", "T"],
-  marker: ["Highlighter", "", "▰"],
-  shapes: ["Shapes", "", "△"],
-  table: ["Table", "", "▦"],
+  brush: ["Brush", "Q"],
+  selector: ["Selector", "W"],
+  eraser: ["Eraser", "E"],
+  text: ["Text", "R"],
+  marker: ["Highlighter", ""],
+  shapes: ["Shapes", ""],
+  table: ["Table", ""],
 };
 let book,
   title = "",
@@ -507,10 +509,16 @@ $("page").onclick = () => {
 function refresh() {
   if (!book) return;
   updateSidebar(book, source, currentPage());
-  $("subjects").hidden = major() === "None";
+  const subject = $("subjects");
+  subject.hidden = false;
+  subject.textContent = major() === "None" ? "Major" : "Study tools";
+  subject.setAttribute("aria-label", major() === "None" ? "Choose major" : "Study tools");
   const prefs = settings();
-  for (const id of Object.keys(toolNames))
-    $("tool-" + id).setAttribute("aria-pressed", String(id === effective()));
+  for (const id of Object.keys(toolNames)) {
+    const button = $("tool-" + id);
+    button.setAttribute("aria-pressed", String(id === effective()));
+    updateToolIcon(id, button, prefs);
+  }
   sheet.className = lower || gesture?.type === "pan" ? "pan" : effective();
   $("undo").disabled = !undo.length && !editing;
   $("redo").disabled = !redo.length && !editing;
@@ -1864,7 +1872,7 @@ function checkOption(label, checked, change) {
     c = $el("input");
   c.type = "checkbox";
   c.checked = checked;
-  c.onchange = () => change(c.checked);
+  c.onchange = () => { change(c.checked); refresh(); };
   l.append(c, document.createTextNode(label));
   pop.append(l);
   return c;
@@ -1886,6 +1894,7 @@ function tableOptions() {
   const change = (key, val) => {
     values[key] = val;
     setting(key, val);
+    refresh();
     if (old) {
       const current = book.objects.find((x) => x.id === o.id),
         { rows, columns, header, tableWidth: w, tableHeight: h } = values;
@@ -2095,7 +2104,7 @@ function menuAction(label, action, enabled = true) {
   pop.append(item);
 }
 $("subjects").onclick = () => {
-  if (major() === "None") return;
+  if (major() === "None") return launcherMenu($("subjects"));
   openPop($("subjects"), "subjects", "Study tools", () => {
     const frame = $el("iframe");
     frame.title = "Study tools";
@@ -2103,6 +2112,7 @@ $("subjects").onclick = () => {
     frame.className = "subject-frame";
     frame.dataset.major = major();
     pop.append(frame);
+    menuAction("Change major…", () => launcherMenu($("subjects")));
   });
 };
 window.addEventListener("message", (e) => {
@@ -2125,6 +2135,25 @@ window.addEventListener("message", (e) => {
   placeEditor();
   finishText();
 });
+function launcherMenu(anchor) {
+  openPop(anchor, "launcher", "Notebook launcher", () => {
+    const label = $el("label", "Major"), select = $el("select");
+    select.setAttribute("aria-label", "Major");
+    for (const name of majors) select.append($el("option", name));
+    select.value = major();
+    select.onchange = () => {
+      chooseMajor(select.value);
+      $("welcome-major").value = major();
+      refresh();
+    };
+    label.append(select);
+    pop.append(label);
+    checkOption("Show launcher at startup", showLauncher(), startupLauncher);
+    if (book) menuAction("Continue notebook", closePop);
+    menuAction("New notebook", newBook);
+    menuAction("Open notebook or PDF…", () => $("file").click());
+  });
+}
 function settingsMenu() {
   openPop($("settings"), "device", "Writing controls", () => {
     pop.append($el("small", deviceLabel()));
@@ -2135,6 +2164,7 @@ function settingsMenu() {
     select.value = major();
     select.onchange = () => {
       chooseMajor(select.value);
+      $("welcome-major").value = major();
       refresh();
     };
     label.append(select);
@@ -2203,6 +2233,7 @@ async function fileMenu() {
   openPop($("files"), "files", "Notebook", () => {
     menuAction("New notebook", newBook);
     menuAction("Open notebook or PDF…", () => $("file").click());
+    menuAction("Notebook launcher…", () => launcherMenu($("files")));
     menuAction("Help & About", () =>
       window.open("./guide.html", "_blank", "noopener"),
     );
@@ -2590,16 +2621,41 @@ $("code-toggle").onclick = () => {
       "Toggle syntax colors",
     );
 };
-for (const [id, [label, key, glyph]] of Object.entries(toolNames)) {
+const iconModes = {
+  brush: { Pen: "pen", Brush: "brush", Fineliner: "fineliner" },
+  selector: { Tap: "tap", Rectangle: "box-select", Lasso: "lasso" },
+  eraser: { Regular: "regular", Stroke: "stroke", Rectangle: "region-erase", Lasso: "lasso-erase" },
+  shapes: { Line: "line", Arrow: "arrow", Box: "box", Oval: "oval" },
+  text: { Auto: "text", Left: "left", Center: "center", Right: "right", Code: "code" },
+  table: { "With header": "table-header", "Plain": "table" },
+};
+function updateToolIcon(id, button, prefs) {
+  const mode = { brush: prefs.nib, selector: prefs.select, eraser: prefs.erase,
+    text: prefs.code ? "Code" : prefs.alignment, shapes: prefs.shape,
+    marker: markerNames[prefs.markerInk], table: prefs.header ? "With header" : "Plain" }[id];
+  if (button.dataset.mode === mode) return;
+  button.dataset.mode = mode;
+  const key = iconModes[id]?.[mode] || "marker";
+  button.querySelector("use").setAttribute("href", "./assets/tools.svg#" + key);
+  if (id === "marker") button.querySelector("svg").style.color = rgb(markers[prefs.markerInk]);
+  const [family, shortcut] = toolNames[id];
+  button.title = family + " · " + mode + (shortcut ? " (" + shortcut + ")" : "");
+  button.setAttribute("aria-description", mode);
+}
+const svgNS = "http://www.w3.org/2000/svg";
+for (const [id, [label, key]] of Object.entries(toolNames)) {
   const b = button("", () => {
     pickTool(id);
     toolOptions(b, id);
   });
   b.id = "tool-" + id;
-  b.title = label + " (" + key + ") · options";
+  b.title = label;
   b.setAttribute("aria-label", label);
-  const mark = $el("span", glyph);
-  mark.className = "glyph";
+  const mark = document.createElementNS(svgNS, "svg");
+  mark.setAttribute("class", "glyph");
+  mark.setAttribute("viewBox", "0 0 24 24");
+  mark.setAttribute("aria-hidden", "true");
+  mark.append(document.createElementNS(svgNS, "use"));
   const name = $el("span", label);
   name.className = "tool-name";
   b.append(mark, name);
@@ -2685,6 +2741,10 @@ $("pdfnext").onclick = () => {
     run(updatePreview);
   }
 };
+const welcomeMajor = $("welcome-major");
+for (const name of majors) welcomeMajor.append($el("option", name));
+welcomeMajor.value = major();
+welcomeMajor.onchange = () => chooseMajor(welcomeMajor.value);
 const detectedLabel = $("detected-device");
 detectedLabel.hidden = mobileSurface;
 detectedLabel.textContent = deviceLabel();
@@ -2725,6 +2785,7 @@ run(async () => {
   const last = await loadState("last");
   if (last) {
     await openStored(last);
+    if (showLauncher()) launcherMenu($("files"));
     return;
   }
   const recents = await library();

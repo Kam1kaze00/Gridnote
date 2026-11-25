@@ -1,0 +1,19 @@
+name: Report a bug
+description: Tell us what happened while you were using Gridnote.
+labels: [bug]
+body:
+  - type: input
+    id: setup
+    attributes:
+      label: What were you using?
+      description: Include the Gridnote version, operating system or browser, and pen or tablet if relevant.
+      placeholder: Gridnote 1.1.0, macOS, One by Wacom CTL-672
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? A short example or screenshot helps.
+    validations:
+      required: true

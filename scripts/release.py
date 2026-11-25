@@ -42,7 +42,8 @@ def package(ref, destination):
                            env=dict(os.environ, GRIDNOTE_ARCH=arch))
             subprocess.run(["codesign", "--verify", "--strict", str(app)], check=True)
             subprocess.run(["lipo", "-verify_arch", arch, str(app / "Contents/MacOS/Gridnote")], check=True)
-            subprocess.run(["ditto", "-c", "-k", "--keepParent", str(app),
+            shutil.copyfile(checkout / "docs/Open Gridnote on Mac.txt", folder / "Open Gridnote on Mac.txt")
+            subprocess.run(["ditto", "-c", "-k", str(folder),
                             str(archives / f"Gridnote-macOS-{arch}.zip")], check=True)
         for system in ("windows", "linux"):
             for arch in ("amd64", "arm64"):
