@@ -14,6 +14,8 @@ Paste an exercise, solve it by hand, and share the finished A4 pages. Gridnote s
 | Windows or Linux | Extract the standalone ZIP for your processor and run Gridnote. The executable opens its embedded editor in your default browser. |
 | iPad, Android, phone or Chromebook | Open an HTTPS-hosted portable build. On iPad, use Safari’s **Share → Add to Home Screen**. Allow the first visit to finish caching the app for offline use. |
 
+[Open Gridnote on a tablet or phone](https://kam1kaze00.github.io/Gridnote/) · [Download the desktop app](https://github.com/Kam1kaze00/Gridnote/releases/latest)
+
 Choose **New Notebook** or open an existing notebook or PDF. Try the [editable circuit exercise](docs/examples/Series%20circuit.gridnote) or see its [finished PDF](docs/examples/Series%20circuit.pdf).
 
 ## In a lecture
