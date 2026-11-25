@@ -3,15 +3,45 @@ import CoreText
 import ImageIO
 import UniformTypeIdentifiers
 
+struct InkFootprint {
+  let body: CGPath
+  let core: CGPath?
+
+  func add(to context: CGContext, core onlyCore: Bool) {
+    if onlyCore {
+      if let core { context.addPath(core) }
+    } else { context.addPath(body) }
+  }
+
+  static func paint(color: InkColor, hasCore: Bool, context: CGContext, add: (Bool) -> Void) {
+    context.setFillColor(color.cg)
+    if hasCore {
+      context.saveGState()
+      context.setAlpha(0.43)
+      add(false)
+      context.fillPath()
+      context.restoreGState()
+    }
+    add(hasCore)
+    context.fillPath()
+  }
+
+  func paint(color: InkColor, context: CGContext) {
+    Self.paint(color: color, hasCore: core != nil, context: context) { add(to: context, core: $0) }
+  }
+}
+
 final class PaperRenderer {
   let pdf: CGPDFDocument?
   private let images = NSCache<NSUUID, ImageBox>()
   private let strokes = NSCache<NSUUID, StrokeBox>()
   private final class StrokeBox {
     let points: [InkPoint]
-    let path: CGPath
-    init(points: [InkPoint], path: CGPath) {
+    let width: CGFloat?
+    let path: InkFootprint
+    init(points: [InkPoint], width: CGFloat?, path: InkFootprint) {
       self.points = points
+      self.width = width
       self.path = path
     }
   }
@@ -147,13 +177,14 @@ final class PaperRenderer {
     switch object.content {
     case .ink(let points, let ink):
       let key = object.id as NSUUID
-      let path: CGPath
-      if let cached = strokes.object(forKey: key), cached.points == points {
+      let path: InkFootprint
+      if let cached = strokes.object(forKey: key), cached.width == object.ballpointWidth, cached.points == points {
         path = cached.path
       } else {
-        path = outline(points)
+        path = footprint(points, ballpointWidth: object.ballpointWidth)
         strokes.setObject(
-          StrokeBox(points: points, path: path), forKey: key, cost: points.count * 80)
+          StrokeBox(points: points, width: object.ballpointWidth, path: path), forKey: key,
+          cost: points.count * (path.core == nil ? 80 : 160))
       }
       context.saveGState()
       defer { context.restoreGState() }
@@ -161,9 +192,7 @@ final class PaperRenderer {
         context.setAlpha(object.opacity ?? 0.38)
         context.setBlendMode(.multiply)
       }
-      context.setFillColor(ink.cg)
-      context.addPath(path)
-      context.fillPath()
+      path.paint(color: ink, context: context)
     case .image(let data):
       let key = object.id as NSUUID
       let cached = images.object(forKey: key)?.image
@@ -225,10 +254,17 @@ final class PaperRenderer {
     }
   }
 
-  func drawInk(_ points: [InkPoint], color: InkColor, context: CGContext) {
-    context.setFillColor(color.cg)
-    context.addPath(outline(points))
-    context.fillPath()
+  func footprint(_ points: [InkPoint], ballpointWidth: CGFloat?) -> InkFootprint {
+    let body = outline(points)
+    guard let width = ballpointWidth, width.isFinite, width > 0 else {
+      return InkFootprint(body: body, core: nil)
+    }
+    // The ball leaves a narrow track. Increasing load fills more of that track with dense ink.
+    let core = points.map { point -> InkPoint in
+      let coverage = min(1, max(0, (2 * point.radius / width - 0.74) / 0.36))
+      return InkPoint(position: point.position, radius: point.radius * (0.16 + 0.84 * coverage))
+    }
+    return InkFootprint(body: body, core: outline(core))
   }
 
   // One pressure-varying outline per stroke. A reversal starts a new round-capped span.

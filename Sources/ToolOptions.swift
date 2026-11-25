@@ -201,7 +201,9 @@ final class ToolOptionsController: NSViewController {
     syncPressure()
   }
   private func syncPressure() {
-    let supported = preferences.device.pressure && preferences.nib != .fineliner
+    let speedBrush = preferences.nib == .brush && !preferences.device.pressure
+    let supported = speedBrush || (preferences.device.pressure && preferences.nib != .fineliner)
+    pressureSwitch?.title = speedBrush ? "Use stroke speed" : "Use pen pressure"
     pressureSwitch?.state = supported && preferences.usePressure ? .on : .off
     pressureSwitch?.isEnabled = supported
     responseSlider?.isEnabled = supported && preferences.usePressure
@@ -340,7 +342,7 @@ final class ToolOptionsController: NSViewController {
     let control = NSSegmentedControl(
       labels: labels, trackingMode: .selectOne, target: self, action: action)
     control.selectedSegment = selected
-    control.segmentDistribution = .fillEqually
+    control.segmentDistribution = labels.count > 4 ? .fillProportionally : .fillEqually
     control.widthAnchor.constraint(equalToConstant: 248).isActive = true
     control.setAccessibilityLabel(title)
     column.addArrangedSubview(
@@ -427,16 +429,24 @@ private final class BrushSample: NSView {
     path.fill()
     var points: [InkPoint] = []
     let style = preferences.writingStyle
-    for i in 0...70 {
-      let t = CGFloat(i) / 70
-      let y = 15 + sin(t * 3 * .pi) * 6 + sin(t * 41) * 0.5
-      let force = 0.1 + sin(.pi * t) * 0.9
-      let radius = style.radius(at: preferences.device.pressure ? force : nil)
-      points.append(
-        InkPoint(position: CGPoint(x: 12 + t * (bounds.width - 24), y: y), radius: radius))
+    var previous: CGFloat?
+    var lastPosition: CGPoint?
+    for i in 0...100 {
+      let t = CGFloat(i) / 100
+      let y = 15 + sin(t * 3 * .pi) * 7
+      let force = 0.04 + 0.94 * pow(sin(Double.pi * Double(t)), 2)
+      let position = CGPoint(x: 12 + t * (bounds.width - 24), y: y)
+      let radius = style.sampledRadius(
+        force: preferences.device.pressure ? force : nil, previous: previous,
+        distance: lastPosition?.distance(to: position) ?? 0, elapsed: 0.008 + force * 0.018,
+        lift: i == 100, stylus: preferences.device.pressure)
+      points.append(InkPoint(position: position, radius: radius))
+      previous = radius
+      lastPosition = position
     }
-    PaperRenderer().drawInk(
-      smoothedInk(points, amount: preferences.smoothing),
-      color: InkColor.colors[preferences.colorIndex].1, context: context)
+    let ball = style.tip == .pen && style.usesPressure && preferences.device.pressure
+    PaperRenderer().footprint(smoothedInk(points, amount: preferences.smoothing),
+                              ballpointWidth: ball ? style.width : nil)
+      .paint(color: InkColor.colors[preferences.colorIndex].1, context: context)
   }
 }

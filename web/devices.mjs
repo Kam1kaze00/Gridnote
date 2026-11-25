@@ -160,7 +160,25 @@ export const defaultSettings = {
 export function pressureResponse(p, force) {
   if (!p.usePressure || p.nib === "Fineliner" || !Number.isFinite(force)) return 1;
   const level = Math.pow(Math.max(0, Math.min(1, force)), p.pressure);
-  return p.nib === "Pen" ? 0.78 + 0.38 * level : 0.18 + 1.52 * level;
+  return p.nib === "Pen"
+    ? 0.74 + 0.36 * (1 - Math.pow(1 - level, 1.4))
+    : 0.12 + 2.48 * level * level * (3 - 2 * level);
+}
+export function sampledRadius(p, force, previous, distance, elapsed, lift, stylus) {
+  if (!p.usePressure || p.nib === "Fineliner") return p.width / 2;
+  if (lift && previous != null) {
+    if (p.nib !== "Brush" || distance < 0.12) return previous;
+    return Math.max(p.width * pressureResponse(p, 0) / 2,
+      previous * Math.exp(-distance / Math.max(1, p.width)));
+  }
+  const dt = Math.max(0.001, elapsed);
+  if (force == null && p.nib === "Brush" && !stylus)
+    force = previous == null ? 0.42 : 0.22 + 0.54 / (1 + distance / (dt * 230));
+  if (force == null) return previous ?? p.width / 2;
+  const target = p.width * pressureResponse(p, force) / 2;
+  if (previous == null) return target;
+  const response = p.nib === "Brush" && target > previous ? 0.011 : 0.0035;
+  return target + (previous - target) * Math.exp(-dt / response);
 }
 export function restore(tool) {
   if (!tool) prefs = {};

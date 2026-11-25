@@ -46,6 +46,7 @@ struct NoteObject: Codable, Equatable, Identifiable {
   var textTraits: Int?
   var instrument: String?
   var opacity: Double?
+  var ballpointWidth: CGFloat?
   var table: TableGrid?
   var codeStyle: Bool?
   var layoutFrame: CGRect? = nil
@@ -66,6 +67,7 @@ struct NoteObject: Codable, Equatable, Identifiable {
       guard let moved = Self.ink(ink, color: color, id: id) else { return self }
       result.frame = moved.frame
       result.content = moved.content
+      result.ballpointWidth = ballpointWidth.map { $0 * scale }
       return result
     }
     result.frame = CGRect(
@@ -297,6 +299,7 @@ func cutInk(_ object: NoteObject, intersects: (InkPoint) -> Bool) -> [NoteObject
   if !run.isEmpty { result.append(run) }
   return result.enumerated().compactMap { i, points in
     var piece = NoteObject.ink(points, color: color, id: i == 0 ? object.id : UUID())
+    piece?.ballpointWidth = object.ballpointWidth
     piece?.instrument = object.instrument
     piece?.opacity = object.opacity
     return piece

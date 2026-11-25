@@ -1,4 +1,4 @@
-import { clamp, dist, makeInk, rect, rgb } from "./engine.mjs";
+import { G, clamp, dist, makeInk, rect, rgb } from "./engine.mjs";
 export const markerNames = ["Yellow", "Mint", "Sky", "Coral", "Lilac"];
 export const markers = [
   [1, 0.83, 0.08],
@@ -68,6 +68,28 @@ export function shapeObject(start, end, shape, lock, width, color) {
       [a, b],
       [a - k * dx + 0.43 * k * dy, b - k * dy - 0.43 * k * dx],
     );
+  }
+  if (shape === "X–Y axes") {
+    const cx = (x + a) / 2, cy = (y + b) / 2;
+    const halfX = Math.abs(dx) / 2, halfY = Math.abs(dy) / 2;
+    if (Math.min(halfX, halfY) < Math.max(3, width)) return null;
+    const spacing = Math.max(G, width * 6);
+    const tick = Math.min(spacing * 0.18, Math.min(halfX, halfY) * 0.12);
+    function axis(half, at) {
+      const head = Math.min(Math.max(4.5, width * 3.5), half * 0.36);
+      const line = [at(-half, 0)];
+      const count = Math.floor(Math.max(0, half - head - tick) / spacing);
+      for (let k = -count; k <= count; k++) {
+        if (!k) continue;
+        const mark = k * spacing;
+        line.push(at(mark, 0), at(mark, -tick), at(mark, tick), at(mark, 0));
+      }
+      line.push(at(half, 0), at(half - head, head * 0.48), at(half, 0),
+        at(half - head, -head * 0.48), at(half, 0), at(0, 0));
+      return line;
+    }
+    pts = [...axis(halfX, (along, cross) => [cx + along, cy + cross]),
+           ...axis(halfY, (along, cross) => [cx + cross, cy - along])];
   }
   if (shape === "Oval") {
     const count = clamp(

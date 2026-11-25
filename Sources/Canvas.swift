@@ -21,8 +21,31 @@ struct WritingStyle {
   func radius(at force: Double?) -> CGFloat {
     guard usesPressure, tip != .fineliner, let force, force.isFinite else { return width / 2 }
     let level = pow(min(1, max(0, force)), exponent)
-    let weight = tip == .pen ? 0.78 + 0.38 * level : 0.18 + 1.52 * level
+    let weight = tip == .pen
+      ? 0.74 + 0.36 * (1 - pow(1 - level, 1.4))
+      : 0.12 + 2.48 * level * level * (3 - 2 * level)
     return width * weight / 2
+  }
+
+  func sampledRadius(force: Double?, previous: CGFloat?, distance: CGFloat, elapsed: Double,
+                     lift: Bool, stylus: Bool) -> CGFloat {
+    guard usesPressure, tip != .fineliner else { return width / 2 }
+    if lift, let previous {
+      guard tip == .brush, distance >= 0.12 else { return previous }
+      return max(radius(at: 0), previous * exp(-distance / max(1, CGFloat(width))))
+    }
+    let dt = max(0.001, elapsed)
+    var contact = force
+    if contact == nil && tip == .brush && !stylus {
+      // A mouse has no load sensor. A slow pull spreads the brush, a flick narrows it.
+      let speed = Double(distance) / dt
+      contact = previous == nil ? 0.42 : 0.22 + 0.54 / (1 + speed / 230)
+    }
+    guard contact != nil else { return previous ?? width / 2 }
+    let target = radius(at: contact)
+    guard let previous else { return target }
+    let response = tip == .brush && target > previous ? 0.011 : 0.0035
+    return target + (previous - target) * CGFloat(exp(-dt / response))
   }
 }
 
@@ -75,7 +98,7 @@ final class PenPreferences {
       return ("Text", [.natural: "textformat", .left: "text.alignleft", .center: "text.aligncenter", .right: "text.alignright"][textAlignment]!)
     case .marker: return ("Highlighter", "highlighter")
     case .shapes:
-      return (shape.rawValue, [.line: "line.diagonal", .arrow: "arrow.up.right", .rectangle: "rectangle", .ellipse: "oval"][shape]!)
+      return (shape.rawValue, [.line: "line.diagonal", .arrow: "arrow.up.right", .rectangle: "rectangle", .ellipse: "oval", .axes: "chart.xyaxis.line"][shape]!)
     case .table: return (tableHeader ? "Table with header" : "Table", tableHeader ? "rectangle.topthird.inset.filled" : "tablecells")
     }
   }
@@ -87,7 +110,7 @@ final class PenPreferences {
     case .eraser: return [.regular: "regular", .stroke: "stroke", .box: "region-erase", .lasso: "lasso-erase"][eraseMode]!
     case .text: return code ? "code" : [.natural: "text", .left: "left", .center: "center", .right: "right"][textAlignment]!
     case .marker: return "marker"
-    case .shapes: return [.line: "line", .arrow: "arrow", .rectangle: "box", .ellipse: "oval"][shape]!
+    case .shapes: return [.line: "line", .arrow: "arrow", .rectangle: "box", .ellipse: "oval", .axes: "axes"][shape]!
     case .table: return tableHeader ? "table-header" : "table"
     }
   }
@@ -122,7 +145,7 @@ final class PenPreferences {
   }
   var writingStyle: WritingStyle {
     WritingStyle(
-      tip: nib, width: width, usesPressure: usePressure && device.pressure, exponent: pressure)
+      tip: nib, width: width, usesPressure: usePressure, exponent: pressure)
   }
   func restore(_ tool: NoteTool? = nil) {
     let scoped: [NoteTool: [String]] = [
@@ -381,7 +404,9 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private var inkTimes: [TimeInterval] = []
   private var draftID = UUID()
   private var lastCheckpoint: TimeInterval = 0
-  private var liveSegments: [(CGRect, CGPath)] = []
+  private var liveSegments: [InkFootprint] = []
+  private var ballpointWidth: CGFloat?
+  private var hasStylusPressure = false
   private var previewStart = 0
   private var inkBounds = CGRect.null
   private var lastErase: CGPoint?
@@ -559,23 +584,23 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         context.setBlendMode(.multiply)
       }
       defer { context.restoreGState() }
-      func section(_ start: Int, _ end: Int) -> CGPath {
-        renderer.outline(
+      func section(_ start: Int, _ end: Int) -> InkFootprint {
+        renderer.footprint(
           smoothedInk(
-            Array(ink[start...end]), amount: inkSmoothing, times: Array(inkTimes[start...end])))
+            Array(ink[start...end]), amount: inkSmoothing, times: Array(inkTimes[start...end])),
+          ballpointWidth: ballpointWidth)
       }
       while ink.count - previewStart > 100 {
         let end = previewStart + 96
-        let path = section(previewStart, end)
-        liveSegments.append((path.boundingBoxOfPath, path))
+        liveSegments.append(section(previewStart, end))
         previewStart = end
       }
-      context.setFillColor(inkColor.cg)
-      for (bounds, path) in liveSegments where bounds.intersects(dirtyRect) {
-        context.addPath(path)
+      let tail = ink.count > previewStart ? section(previewStart, ink.count - 1) : nil
+      let visible = liveSegments.filter { $0.body.boundingBoxOfPath.intersects(dirtyRect) }
+      InkFootprint.paint(color: inkColor, hasCore: ballpointWidth != nil, context: context) { core in
+        for path in visible { path.add(to: context, core: core) }
+        tail?.add(to: context, core: core)
       }
-      if ink.count > previewStart { context.addPath(section(previewStart, ink.count - 1)) }
-      context.fillPath()
     }
     if first <= last {
       context.setStrokeColor(CGColor(red: 0.53, green: 0.59, blue: 0.63, alpha: 1))
@@ -665,7 +690,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private func sample(_ event: NSEvent, point: CGPoint, usingLastPressure: Bool = false) -> InkPoint
   {
     var force: Double?
-    if !usingLastPressure {
+    if !usingLastPressure && preferences.device != .sidecarUSB {
       if event.isTabletSample {
         force = Double(event.tipPressure)
       } else if let last = lastTabletInput, last.tip,
@@ -677,15 +702,18 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         force = Double(event.pressure)
       }
     }
-    var radius = strokeStyle.radius(at: force)
-    if let last = ink.last {
-      if force == nil {
-        radius = last.radius
-      } else if let time = inkTimes.last {
-        let dt = max(0.001, event.timestamp - time)
-        radius += (last.radius - radius) * exp(-dt / 0.005)
+    if force != nil {
+      hasStylusPressure = true
+      if strokeStyle.tip == .pen && strokeStyle.usesPressure && ballpointWidth == nil {
+        ballpointWidth = strokeStyle.width
+        liveSegments.removeAll(keepingCapacity: true)
+        previewStart = 0
       }
     }
+    let radius = strokeStyle.sampledRadius(
+      force: force, previous: ink.last?.radius, distance: ink.last?.position.distance(to: point) ?? 0,
+      elapsed: event.timestamp - (inkTimes.last ?? event.timestamp),
+      lift: usingLastPressure, stylus: hasStylusPressure)
     let clamped = CGPoint(
       x: min(paperSize.width - radius, max(radius, point.x)),
       y: min(bounds.height - radius, max(radius, point.y)))
@@ -736,6 +764,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     case .brush, .marker:
       liveSegments.removeAll(keepingCapacity: true)
       previewStart = 0
+      hasStylusPressure = false
+      ballpointWidth = nil
       draftID = UUID()
       lastCheckpoint = event.timestamp
       inkColor = tool == .marker ? markerColors[preferences.markerIndex].1 : currentColor
@@ -1606,6 +1636,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     guard let color = inkColor else { return nil }
     var object = NoteObject.ink(
       smoothedInk(ink, amount: inkSmoothing, times: inkTimes), color: color, id: draftID)
+    object?.ballpointWidth = ballpointWidth
     if tool == .marker {
       object?.instrument = "marker"
       object?.opacity = preferences.markerOpacity
