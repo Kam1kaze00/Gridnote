@@ -355,11 +355,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       "A4 · Grid", symbol: "chevron.down", target: self, action: #selector(showPaper(_:)))
     paperButton.controlHeight = 25
     paperButton.toolTip = "Page ruling and paper color"
-    let clearText = ChromeButton("Clear Text", style: .outlined, target: self,
-      action: #selector(clearPageText(_:)))
-    clearText.controlHeight = 24
-    clearText.setAccessibilityLabel("Clear typed text on this page")
-    clearText.toolTip = "Remove typed text from this page. Undo with ⌘Z."
+    let clearWriting = ChromeButton("Clear Writing", style: .outlined, target: self,
+      action: #selector(clearPage(_:)))
+    clearWriting.controlHeight = 24
+    clearWriting.setAccessibilityLabel("Clear writing on this page")
+    clearWriting.toolTip = "Clear Pen, Brush and Fineliner strokes on this page. Undo with ⌘Z."
     undoButton = ChromeButton(
       symbol: "arrow.uturn.backward", target: self, action: #selector(undoEdit(_:)))
     redoButton = ChromeButton(
@@ -372,7 +372,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     }
     let left = chromeStack(
       [
-        pagesButton, pageLabel, separator(), paperButton, clearText, separator(), undoButton, redoButton,
+        pagesButton, pageLabel, separator(), paperButton, clearWriting, separator(), undoButton, redoButton,
         selectionActions,
       ],
       spacing: 5)
@@ -880,10 +880,10 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     settingsPopover = popover
   }
 
-  @objc func clearPage(_ sender: Any?) { canvas.clearWriting(page: page) }
-  @objc func clearPageText(_ sender: Any?) { canvas.clearAllWriting(typedOnly: true, page: page) }
-  @objc func clearTypedText(_ sender: Any?) { canvas.clearAllWriting(typedOnly: true) }
-  @objc func clearAll(_ sender: Any?) { canvas.clearAllWriting(typedOnly: false) }
+  @objc func clearPage(_ sender: Any?) { canvas.clearWriting(.handwriting, on: page) }
+  @objc func clearPageText(_ sender: Any?) { canvas.clearWriting(.typedText, on: page) }
+  @objc func clearTypedText(_ sender: Any?) { canvas.clearWriting(.typedText) }
+  @objc func clearAll(_ sender: Any?) { canvas.clearWriting(.handwriting) }
   @objc func deletePage(_ sender: Any?) { canvas.deletePage(page) }
 
   private func applyTheme() {
