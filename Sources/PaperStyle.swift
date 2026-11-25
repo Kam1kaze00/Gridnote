@@ -30,6 +30,7 @@ enum PaperTint: String, CaseIterable, Codable {
 struct PaperDesign: Codable, Equatable {
   var ruling: PaperRuling = .grid
   var tint: PaperTint = .white
+  var cartoon: Bool?
 }
 
 final class PaperPicker: NSViewController {
@@ -38,13 +39,14 @@ final class PaperPicker: NSViewController {
   private var global: Bool
   private var ruling: NSSegmentedControl!
   private var colors: [ChromeButton] = []
+  private var cartoonCheck: NSButton!
   private var colorLabel: NSTextField!
   init(canvas: NoteCanvas, page: Int) {
     self.canvas = canvas
     self.page = page
     global = canvas.notebook.sourceIndex(on: page) != nil
     super.init(nibName: nil, bundle: nil)
-    preferredContentSize = CGSize(width: 305, height: 185)
+    preferredContentSize = CGSize(width: 305, height: 214)
   }
   required init?(coder: NSCoder) { nil }
   override func loadView() {
@@ -75,10 +77,11 @@ final class PaperPicker: NSViewController {
       button.setAccessibilityLabel(tint.rawValue)
       return button
     }
+    cartoonCheck = NSButton(checkboxWithTitle: "70s Cartoon paper", target: self, action: #selector(changeCartoon(_:)))
     let column = chromeStack(
       [
         chromeLabel("Paper", size: 15, weight: .semibold), scope,
-        ruling, colorLabel, chromeStack(colors, spacing: 5),
+        ruling, cartoonCheck, colorLabel, chromeStack(colors, spacing: 5),
       ], spacing: 9, horizontal: false)
     view.addSubview(column)
     NSLayoutConstraint.activate([
@@ -92,6 +95,7 @@ final class PaperPicker: NSViewController {
   }
   private func refresh() {
     let design = current
+    cartoonCheck.state = design.cartoon == true ? .on : .off
     colorLabel.stringValue = "Paper color · " + design.tint.rawValue
     ruling.selectedSegment = PaperRuling.allCases.firstIndex(of: design.ruling)!
     for (index, button) in colors.enumerated() {
@@ -105,6 +109,12 @@ final class PaperPicker: NSViewController {
   @objc private func changeRuling(_ sender: NSSegmentedControl) {
     var design = current
     design.ruling = PaperRuling.allCases[sender.selectedSegment]
+    canvas.setPaper(design, on: global ? nil : page)
+    refresh()
+  }
+  @objc private func changeCartoon(_ sender: NSButton) {
+    var design = current
+    design.cartoon = sender.state == .on ? true : nil
     canvas.setPaper(design, on: global ? nil : page)
     refresh()
   }

@@ -27,6 +27,25 @@ final class PaperRenderer {
     strokes.totalCostLimit = 32 * 1024 * 1024
   }
 
+  private func drawFolio(_ page: Int, top: CGFloat, context: CGContext) {
+    context.saveGState()
+    context.translateBy(x: 0, y: top + 24)
+    context.scaleBy(x: 1, y: -1)
+    context.textMatrix = .identity
+    let ink = CGColor(red: 108/255, green: 103/255, blue: 87/255, alpha: 1)
+    let number = NSAttributedString(string: String(format: "%02d", page + 1), attributes: [
+      .font: NSFont(name: "Georgia-BoldItalic", size: 12) ?? NSFont.boldSystemFont(ofSize: 12),
+      .foregroundColor: NSColor(cgColor: ink) ?? .darkGray])
+    context.textPosition = CGPoint(x: 12, y: 0)
+    CTLineDraw(CTLineCreateWithAttributedString(number), context)
+    context.setFillColor(ink)
+    context.fill(CGRect(x: 12, y: -4.65, width: 17, height: 0.65))
+    if let image = NotebookGlyph.mascotCG {
+      context.setAlpha(0.72)
+      context.draw(image, in: CGRect(x: paperSize.width - 43, y: -12, width: 34, height: 32))
+    }
+    context.restoreGState()
+  }
   func draw(
     page index: Int, design: PaperDesign = PaperDesign(), sourceIndex: Int? = nil,
     originalScale: Bool = false, context: CGContext
@@ -56,9 +75,11 @@ final class PaperRenderer {
       context.clip(to: page.getBoxRect(.cropBox))
       context.drawPDFPage(page)
     } else {
-      context.setFillColor(design.tint.color.cgColor)
+      let cartoon = design.cartoon == true
+      let tint = cartoon && design.tint == .ivory ? CGColor(red: 248/255, green: 244/255, blue: 232/255, alpha: 1) : design.tint.color.cgColor
+      context.setFillColor(tint)
       context.fill(rect)
-      context.setStrokeColor(CGColor(red: 0.47, green: 0.62, blue: 0.71, alpha: 0.37))
+      context.setStrokeColor(cartoon ? CGColor(red: 115/255, green: 107/255, blue: 85/255, alpha: 0.25) : CGColor(red: 0.47, green: 0.62, blue: 0.71, alpha: 0.37))
       context.setLineWidth(0.35)
       if design.ruling == .grid {
         for x in stride(from: CGFloat.zero, through: rect.width, by: paperGrid) {
@@ -77,6 +98,11 @@ final class PaperRenderer {
         context.setLineWidth(0.65)
         context.move(to: CGPoint(x: paperGrid * 4, y: rect.minY))
         context.addLine(to: CGPoint(x: paperGrid * 4, y: rect.maxY))
+        if cartoon {
+          context.setStrokeColor(CGColor(red: 174/255, green: 119/255, blue: 112/255, alpha: 1))
+          context.move(to: CGPoint(x: paperGrid * 4 - 2.2, y: rect.minY))
+          context.addLine(to: CGPoint(x: paperGrid * 4 - 2.2, y: rect.maxY))
+        }
         context.strokePath()
       } else if design.ruling == .dotted {
         context.setFillColor(CGColor(red: 0.44, green: 0.54, blue: 0.6, alpha: 0.52))
@@ -88,6 +114,9 @@ final class PaperRenderer {
             context.fillEllipse(in: CGRect(x: x - 0.6, y: y - 0.6, width: 1.2, height: 1.2))
           }
         }
+      }
+      if cartoon && design.ruling != .plain {
+        drawFolio(index, top: rect.minY, context: context)
       }
     }
     context.restoreGState()

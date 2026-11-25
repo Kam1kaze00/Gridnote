@@ -41,6 +41,12 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 
 ![Tablet writing area with contextual highlighter options](docs/images/tablet-notebook.png)
 
+## Appearance
+
+Open **Options → Theme** to choose **Default** or **70s Cartoon**. Default uses a compact pen nib. The cartoon theme pairs illustrated tools with a cream launcher and the transparent pencil mascot. Its optional stationery includes a double margin and a numbered corner. Choose it under **Paper** for a page or notebook. Those markings appear in the exported PDF.
+
+![70s Cartoon notebook showing illustrated tools, a numbered page and a worked circuit exercise](docs/images/cartoon-notebook.png)
+
 ## Major tools
 
 Choose a tool in the row below the writing toolbar. Adjust its inputs and use **Insert** to put the result on the page. The full set works offline.

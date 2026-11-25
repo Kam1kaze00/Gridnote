@@ -67,7 +67,7 @@ import {
   restore,
   majors,
   major,
-  chooseMajor,
+  chooseMajor, theme, themes, chooseTheme,
   settings,
   setting,
   deviceHelp,
@@ -452,7 +452,9 @@ async function openStored(id) {
   }
 }
 async function newBook() {
-  await openBook(blank(), "Untitled Notebook");
+  const notebook = blank();
+  if (theme() === "70s Cartoon") notebook.defaultPaper = { ruling: "Grid", tint: "Ivory", cartoon: true };
+  await openBook(notebook, "Untitled Notebook");
   touchSave();
   await flush();
 }
@@ -597,6 +599,7 @@ function setZoom(n, screen = [view.clientWidth / 2, view.clientHeight / 2]) {
 function draw() {
   if (!paintFrame) paintFrame = requestAnimationFrame(paint);
 }
+window.addEventListener("gridnote-paper-loaded", () => { if (book) backgroundReady(); });
 function backgroundReady() {
   if (gesture?.type === "ink") gesture.viewKey = null;
   draw();
@@ -1801,10 +1804,14 @@ function choices(label, items, value, select) {
   items.forEach((item) => {
     const b = button(item, () => {
       select(item);
-      for (const el of row.children) el.classList.toggle("active", el === b);
+      for (const el of row.children) {
+        el.classList.toggle("active", el === b);
+        el.setAttribute("aria-pressed", String(el === b));
+      }
       refresh();
     });
     b.classList.toggle("active", value === item);
+    b.setAttribute("aria-pressed", String(value === item));
     row.append(b);
   });
   pop.append(row);
@@ -2113,7 +2120,7 @@ function refreshSubjectStrip() {
       openPop(chip, "subjects", entry.name, () => {
         const frame = $el("iframe");
         frame.title = entry.name;
-        frame.src = "./subjects.html?tool=" + encodeURIComponent(entry.name) + "#" + encodeURIComponent(name);
+        frame.src = "./subjects.html?tool=" + encodeURIComponent(entry.name) + "&theme=" + encodeURIComponent(theme()) + "#" + encodeURIComponent(name);
         frame.className = "subject-frame";
         frame.dataset.major = name;
         pop.append(frame);
@@ -2177,8 +2184,31 @@ async function openLauncherChoice(action) {
   if (pausedView) view.scrollTo(pausedView.x * scale, pausedView.y * scale);
   draw();
 }
+function applyTheme() {
+  const cartoon = theme() === "70s Cartoon";
+  document.body.classList.toggle("seventies", cartoon);
+  document.body.classList.toggle("refined", !cartoon);
+  $("files").querySelector("img").src = cartoon ? "./assets/pencil.png" : "./assets/pen-mark.svg";
+  const actions = { settings:"settings", palette:"palette", addimage:"addimage", undo:"undo", redo:"redo" };
+  for (const [id, icon] of Object.entries(actions)) {
+    const control = $(id);
+    if (!control.dataset.glyph) control.dataset.glyph = control.textContent;
+    if (cartoon) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class","ink-glyph");
+      svg.setAttribute("aria-hidden","true");
+      svg.setAttribute("viewBox","0 0 24 24");
+      const use = document.createElementNS(svg.namespaceURI,"use");
+      use.setAttribute("href","./assets/ink-tools.svg#" + icon);
+      svg.append(use);
+      control.replaceChildren(svg);
+    } else control.textContent = control.dataset.glyph;
+  }
+  document.querySelector('meta[name="theme-color"]').content = cartoon ? "#f5f1e6" : "#1a2027";
+}
 function settingsMenu() {
-  openPop($("settings"), "device", "Writing controls", () => {
+  openPop($("settings"), "device", "Options", () => {
+    choices("Theme", themes, theme(), value => { chooseTheme(value); applyTheme(); });
     pop.append($el("small", deviceLabel()));
     const label = $el("label", "Major"),
       select = $el("select");
@@ -2206,6 +2236,7 @@ function settingsMenu() {
     pop.append($el("p", deviceHelp()));
     menuAction("Restore all settings", () => {
       restore();
+      applyTheme();
       refresh();
       settingsMenu();
     });
@@ -2232,6 +2263,10 @@ function paperMenu() {
         : book.defaultPaper || defaultPaper;
     choices("Ruling", rulings, design.ruling, (x) => {
       changePaper({ ...design, ruling: x });
+      paperMenu();
+    });
+    checkOption("70s Cartoon paper", !!design.cartoon, enabled => {
+      changePaper({ ...design, cartoon: enabled });
       paperMenu();
     });
     pop.append($el("small", "Paper color · " + design.tint));
@@ -2657,10 +2692,11 @@ function updateToolIcon(id, button, prefs) {
   const mode = { brush: prefs.nib, selector: prefs.select, eraser: prefs.erase,
     text: prefs.code ? "Code" : prefs.alignment, shapes: prefs.shape,
     marker: markerNames[prefs.markerInk], table: prefs.header ? "With header" : "Plain" }[id];
-  if (button.dataset.mode === mode) return;
+  if (button.dataset.mode === mode && button.dataset.theme === theme()) return;
+  button.dataset.theme = theme();
   button.dataset.mode = mode;
   const key = iconModes[id]?.[mode] || "marker";
-  button.querySelector("use").setAttribute("href", "./assets/tools.svg#" + key);
+  button.querySelector("use").setAttribute("href", (theme() === "70s Cartoon" ? "./assets/ink-tools.svg#" : "./assets/tools.svg#") + key);
   if (id === "marker") button.querySelector("svg").style.color = rgb(markers[prefs.markerInk]);
   const [family, shortcut] = toolNames[id];
   button.title = family + " · " + mode + (shortcut ? " (" + shortcut + ")" : "");
@@ -2763,6 +2799,7 @@ $("pdfnext").onclick = () => {
     run(updatePreview);
   }
 };
+applyTheme();
 const launcher = GridnoteLauncher.mount($("welcome"), {
   major: major(), device: mobileSurface ? "" : deviceLabel(),
   start: action => run(() => enterFromLauncher(action)),

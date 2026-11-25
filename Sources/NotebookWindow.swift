@@ -29,6 +29,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   var requestLauncher: (() -> Void)?
   private let subjectScroll = NSScrollView()
   private var subjectHeight: NSLayoutConstraint!
+  private var displayedCartoon: Bool?
   private var displayedMajor: String?
   private var solveButton: ChromeButton!
   private var preview: PDFPreviewController?
@@ -51,6 +52,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private var colorButtons: [ChromeButton] = []
   private var palette: NSStackView!
   private var paletteButton: ChromeButton!
+  private var optionsButton: ChromeButton!
   private var welcomeMajor = NSPopUpButton()
   private var deviceLabel: NSTextField!
   private var selectionActions: ChromeButton!
@@ -71,13 +73,14 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     self.storage = storage
     session = (try? storage.loadSession()) ?? NotebookSession()
     self.preferences = preferences
+    ChromeTheme.cartoon = preferences.cartoonTheme
     canvas = NoteCanvas(preferences: preferences, clipboard: clipboard)
     let window = NSWindow(
       contentRect: CGRect(x: 0, y: 0, width: 1140, height: 770),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered, defer: false)
     super.init(window: window)
-    window.appearance = NSAppearance(named: .darkAqua)
+    window.appearance = ChromeTheme.appearance
     window.backgroundColor = chromeBackground
     window.title = "Gridnote"
     window.titleVisibility = .hidden
@@ -182,7 +185,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   }
 
   private func setupHeader() {
-    let brand = NotebookGlyph(size: 24)
+    let brand = NotebookGlyph(size: 28)
     documentName.lineBreakMode = .byTruncatingMiddle
     documentName.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     let title = chromeStack([brand, documentName], spacing: 9)
@@ -260,16 +263,20 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     palette = chromeStack(colorButtons, spacing: 0)
     paletteButton = ChromeButton(
       symbol: "paintpalette", target: self, action: #selector(togglePalette(_:)))
+    paletteButton.inkIcon = "palette"
     paletteButton.setAccessibilityLabel("Toggle color palette")
     paletteButton.toolTip = "Show or hide ink colors"
     let image = ChromeButton(
       symbol: "photo.badge.plus", target: self, action: #selector(importImage(_:)))
+    image.inkIcon = "addimage"
     image.setAccessibilityLabel("Import image")
     image.toolTip = "Import an image. Paste a screenshot with Command–V."
     let settings = ChromeButton(
       symbol: "slider.horizontal.3", target: self, action: #selector(showPenSettings(_:)))
+    optionsButton = settings
+    settings.inkIcon = "settings"
     settings.setAccessibilityLabel("Writing device and pen settings")
-    settings.toolTip = "Writing device and scroll speed"
+    settings.toolTip = "Options · theme, writing device and scroll speed"
     let right = chromeStack([palette, paletteButton, separator(), image, settings], spacing: 5)
     add(right, to: toolbar)
     NSLayoutConstraint.activate([
@@ -574,7 +581,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     do {
       guard commitCurrent() else { return }
       let url = try storage.localURL(named: "Untitled Notebook")
-      let notebook = Notebook()
+      var notebook = Notebook()
+      if preferences.cartoonTheme { notebook.defaultPaper = PaperDesign(ruling: .grid, tint: .ivory, cartoon: true) }
       try storage.saveNow(notebook, to: url)
       showNotebook(notebook, at: url, position: ViewPosition())
     } catch { alert("Couldn’t create a notebook", error: error) }
@@ -843,7 +851,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     _ = panel.view
     let popover = NSPopover()
     popover.behavior = .transient
-    popover.appearance = NSAppearance(named: .darkAqua)
+    popover.appearance = ChromeTheme.appearance
     popover.contentViewController = panel
     popover.contentSize = panel.preferredContentSize
     let anchor = sender as? NSView ?? button
@@ -857,8 +865,28 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   @objc func clearAll(_ sender: Any?) { canvas.clearAllWriting(typedOnly: false) }
   @objc func deletePage(_ sender: Any?) { canvas.deletePage(page) }
 
+  private func applyTheme() {
+    let cartoon = preferences.cartoonTheme
+    guard displayedCartoon != cartoon else { return }
+    displayedCartoon = cartoon
+    ChromeTheme.cartoon = cartoon
+    window?.appearance = ChromeTheme.appearance
+    toolbar.appearance = NSAppearance(named: .darkAqua)
+    footer.appearance = NSAppearance(named: .darkAqua)
+    documentName.font = cartoon ? (NSFont(name: "Georgia-Bold", size: 16) ?? .boldSystemFont(ofSize: 16)) : .systemFont(ofSize: 15, weight: .semibold)
+    displayedMajor = nil
+    settingsPopover?.appearance = ChromeTheme.appearance
+    func redraw(_ view: NSView) {
+      if let surface = view as? Surface { surface.refreshColor() }
+      view.needsDisplay = true
+      for child in view.subviews { redraw(child) }
+    }
+    if let root = window?.contentView { redraw(root) }
+    if let popView = settingsPopover?.contentViewController?.view { redraw(popView) }
+  }
   private func updateTools() {
     guard palette != nil, fitButton != nil else { return }
+    applyTheme()
     updateHistory()
     if !pagesSidebar.isHidden { pagesSidebar.update(canvas.notebook, current: page) }
     welcomeMajor.selectItem(withTitle: preferences.major)
@@ -867,6 +895,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     solveButton?.selected = !canvas.studyProblems.isEmpty
     for (tool, button) in toolButtons {
       let appearance = preferences.toolAppearance(tool)
+      button.inkIcon = preferences.illustration(tool)
       if button.symbol != appearance.symbol { button.symbol = appearance.symbol }
       let family = tool == .marker ? "Highlighter" : tool.rawValue.capitalized
       let detail = tool == .marker ? markerColors[preferences.markerIndex].0 : appearance.name
@@ -967,13 +996,16 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     let panel = PaperPicker(canvas: canvas, page: page)
     let popover = NSPopover()
     popover.behavior = .transient
-    popover.appearance = NSAppearance(named: .darkAqua)
+    popover.appearance = ChromeTheme.appearance
     popover.contentViewController = panel
     popover.contentSize = panel.preferredContentSize
     popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
     settingsPopover = popover
   }
 
+  @objc func openOptions(_ sender: Any?) {
+    if let button = optionsButton { showPenSettings(button) }
+  }
   @objc private func showPenSettings(_ sender: NSView) {
     if settingsPopover?.isShown == true {
       settingsPopover?.performClose(nil)
@@ -981,7 +1013,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     }
     let popover = NSPopover()
     popover.behavior = .transient
-    popover.appearance = NSAppearance(named: .darkAqua)
+    popover.appearance = ChromeTheme.appearance
     let pane = PenSettingsController(preferences: preferences) { [weak self, weak popover] in
       popover?.performClose(nil)
       self?.wacomSetup(nil)
@@ -1048,7 +1080,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     guard !names.isEmpty else { subjectScroll.documentView = nil; return }
     let label = chromeLabel(major, size: 11, weight: .semibold, color: appAccent)
     let buttons = names.map { name -> ChromeButton in
-      let button = ChromeButton(name, style: .outlined, target: self, action: #selector(openSubjects(_:)))
+      let button = ChromeButton(name, style: preferences.cartoonTheme ? .outlined : .plain, target: self, action: #selector(openSubjects(_:)))
       button.controlHeight = 26
       return button
     }
@@ -1063,6 +1095,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     settingsPopover?.performClose(nil)
     let pop = NSPopover()
     pop.behavior = .transient
+    pop.appearance = ChromeTheme.appearance
     let panel = SubjectToolsController(major: preferences.major, tool: sender.caption) { [weak self, weak pop] text in
       pop?.performClose(nil)
       self?.canvas.insertStudyResult(text)
@@ -1115,7 +1148,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     _ = controller.view
     let panel = NSPopover()
     panel.behavior = .transient
-    panel.appearance = NSAppearance(named: .darkAqua)
+    panel.appearance = ChromeTheme.appearance
     panel.contentViewController = controller
     panel.contentSize = controller.preferredContentSize
     if let problem {

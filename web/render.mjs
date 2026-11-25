@@ -91,9 +91,26 @@ export function imageOf(o, onReady) {
 export function resetImageCache() {
   images.clear();
 }
+const paperMascot = new Image();
+paperMascot.addEventListener("load", () => window.dispatchEvent(new Event("gridnote-paper-loaded")));
+paperMascot.src = new URL("./assets/pencil.png", import.meta.url).href;
+
+function drawFolio(ctx, page) {
+  ctx.fillStyle = "#6c6757";
+  ctx.font = "italic bold 12px Georgia, serif";
+  ctx.fillText(String(page + 1).padStart(2, "0"), 12, 24);
+  ctx.fillRect(12, 28, 17, 0.65);
+  if (paperMascot.complete && paperMascot.naturalWidth) {
+    ctx.globalAlpha = 0.72;
+    ctx.drawImage(paperMascot, W - 43, 4, 34, 32);
+  }
+}
+function paperColor(design) {
+  return design.cartoon && design.tint === "Ivory" ? "#f8f4e8" : tints[design.tint] || "#ffffff";
+}
 export function paintPaper(ctx, page, design) {
   const y = page * H;
-  ctx.fillStyle = tints[design.tint] || "#fff";
+  ctx.fillStyle = paperColor(design);
   ctx.fillRect(0, y, W, H);
   if (design.ruling === "Whiteboard") return;
   ctx.save();
@@ -111,7 +128,7 @@ export function paintPaper(ctx, page, design) {
     ctx.fill();
   } else {
     ctx.lineWidth = 0.35;
-    ctx.strokeStyle = "rgba(120,158,181,.37)";
+    ctx.strokeStyle = design.cartoon ? "rgba(115,107,85,.25)" : "rgba(120,158,181,.37)";
     ctx.beginPath();
     if (design.ruling === "Grid")
       for (let x = 0; x <= W; x += G) {
@@ -124,12 +141,17 @@ export function paintPaper(ctx, page, design) {
       ctx.lineTo(W, y + j);
     }
     ctx.stroke();
-    ctx.strokeStyle = "rgba(196,94,107,.72)";
+    ctx.strokeStyle = design.cartoon ? "#ae7770" : "rgba(196,94,107,.72)";
     ctx.lineWidth = 0.65;
     ctx.beginPath();
     ctx.moveTo(4 * G, y);
     ctx.lineTo(4 * G, y + H);
+    if (design.cartoon) { ctx.moveTo(4 * G - 2.2, y); ctx.lineTo(4 * G - 2.2, y + H); }
     ctx.stroke();
+  }
+  if (design.cartoon) {
+    ctx.translate(0, y);
+    drawFolio(ctx, page);
   }
   ctx.restore();
 }
@@ -269,7 +291,7 @@ export async function makePDF(book, source, progress) {
       image.width = image.height = 1;
     } else {
       const design = paper(book, i),
-        hex = tints[design.tint] || "#ffffff";
+        hex = paperColor(design);
       const [r, g, b] = [1, 3, 5].map(
         (k) => parseInt(hex.slice(k, k + 2), 16) / 255,
       );
@@ -288,14 +310,17 @@ export async function makePDF(book, source, progress) {
           thickness,
           opacity,
         });
-      const grid = lib.rgb(0.47, 0.62, 0.71);
+      const grid = design.cartoon ? lib.rgb(115/255,107/255,85/255) : lib.rgb(0.47, 0.62, 0.71);
+      const gridOpacity = design.cartoon ? 0.25 : 0.37;
       if (design.ruling === "Grid")
-        for (let x = 0; x <= W; x += G) line(x, 0, x, H, grid, 0.35, 0.37);
+        for (let x = 0; x <= W; x += G) line(x, 0, x, H, grid, 0.35, gridOpacity);
       if (design.ruling === "Grid" || design.ruling === "Ruled") {
         const spacing = design.ruling === "Grid" ? G : (7 * 72) / 25.4;
         for (let y = 0; y <= H; y += spacing)
-          line(0, H - y, W, H - y, grid, 0.35, 0.37);
-        line(4 * G, 0, 4 * G, H, lib.rgb(0.77, 0.37, 0.42), 0.65, 0.72);
+          line(0, H - y, W, H - y, grid, 0.35, gridOpacity);
+        const margin = design.cartoon ? lib.rgb(174/255,119/255,112/255) : lib.rgb(0.77,0.37,0.42);
+        line(4 * G, 0, 4 * G, H, margin, 0.65, design.cartoon ? 1 : 0.72);
+        if (design.cartoon) line(4 * G - 2.2, 0, 4 * G - 2.2, H, margin, 0.65, 1);
       } else if (design.ruling === "Dotted") {
         // Tile one vector dot using a single graphics-state setup.
         page.pushOperators(
@@ -316,6 +341,11 @@ export async function makePDF(book, source, progress) {
             );
           }
         page.pushOperators(lib.fill(), lib.popGraphicsState());
+      }
+      if (design.cartoon && design.ruling !== "Whiteboard") {
+        await paperMascot.decode();
+        const folio = await raster(ctx => drawFolio(ctx, i), W, 38);
+        page.drawImage(folio, { x: 0, y: H - 38, width: W, height: 38 });
       }
     }
     for (const o of book.objects) {

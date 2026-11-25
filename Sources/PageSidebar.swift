@@ -65,6 +65,12 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     ])
     setAccessibilityLabel("Page thumbnails")
   }
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      layer?.backgroundColor = chromeToolbar.cgColor
+    }
+  }
   required init?(coder: NSCoder) { nil }
   func update(_ book: Notebook, current: Int) {
     guard !isHidden else { return }

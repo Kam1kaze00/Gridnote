@@ -49,6 +49,7 @@ export function pageSidebar(panel, { jump, change }) {
       paintObject(g, o);
     }
   }
+  window.addEventListener("gridnote-paper-loaded", () => { signature = ""; paint(); });
   function paint() {
     if (panel.hidden || !document) return;
     const first = Math.max(0, Math.floor(list.scrollTop / 130) - 1),

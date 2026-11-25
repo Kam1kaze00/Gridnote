@@ -40,7 +40,12 @@ import WebKit
     expect(Set(eraseSymbols).count == 4, "each eraser mode has its own toolbar symbol")
     expect(MajorCatalog.tools.count == 7 && MajorCatalog.tools.values.allSatisfy { $0.count == 6 },
       "every major exposes six shared tools and None exposes no subject tools")
+    expect(ChromeTheme.icon("pen", color: .black)?.isValid == true && NotebookGlyph.mascotCG != nil,
+      "theme assets render as native artwork")
+    preferences.cartoonTheme = true
+    expect(PenPreferences(defaults: defaults).cartoonTheme, "appearance is shared by saved pen preferences")
     preferences.restore()
+    expect(!preferences.cartoonTheme, "restore all settings returns to the Default appearance")
     let storage = NotebookStorage(directory: directory)
     let pb = NSPasteboard.withUniqueName()
     let owner = NotebookWindow(storage: storage, preferences: preferences, clipboard: pb)
@@ -582,6 +587,20 @@ import WebKit
       owner.fitWidth(nil)
       pump(0.2)
       try capture("demo-mac.png")
+      let editorial = PaperDesign(ruling: .grid, tint: .ivory, cartoon: true)
+      preferences.cartoonTheme = true
+      canvas.refreshTool()
+      canvas.setPaper(editorial, on: 0)
+      pump(0.2)
+      try capture("demo-cartoon-mac.png")
+      let themed = try canvas.renderer.export(canvas.notebook)
+      try themed.write(to: qa.appendingPathComponent("cartoon-paper.pdf"))
+      expect(PDFDocument(data: themed)?.pageCount == canvas.notebook.usedPages, "cartoon stationery exports with the notebook page count")
+      expect(win.appearance?.name == .aqua && canvas.notebook.paper(on: 0).cartoon == true, "theme and paper apply to the active Mac notebook")
+      canvas.history.undo()
+      preferences.cartoonTheme = false
+      canvas.refreshTool()
+
       try canvas.renderer.export(canvas.notebook).write(to: qa.appendingPathComponent("demo.pdf"))
       if ProcessInfo.processInfo.environment["GRIDNOTE_TEST_FULLSCREEN"] == "1" {
         win.toggleFullScreen(nil)

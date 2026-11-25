@@ -1,3 +1,4 @@
+document.documentElement.classList.toggle("cartoon", new URLSearchParams(location.search).get("theme") === "70s Cartoon");
 const $ = (id) => document.getElementById(id);
 const selectedMajor = decodeURIComponent(location.hash.slice(1)),
   tools = GridnoteKits.kits[selectedMajor] || [];

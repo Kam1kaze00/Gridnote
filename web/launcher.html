@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Gridnote</title>
     <link rel="stylesheet" href="launcher.css" />
+    <link rel="stylesheet" href="themes.css" />
     <style>
       html,
       body {
@@ -22,6 +23,7 @@
     <script src="majors.js"></script>
     <script src="launcher.js"></script>
     <script>
+      document.body.classList.toggle("seventies", window.launchOptions?.theme === "70s Cartoon");
       const bridge = window.webkit?.messageHandlers?.gridnoteLauncher;
       if (!bridge) location.replace("./");
       else

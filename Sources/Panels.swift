@@ -5,6 +5,7 @@ final class PenSettingsController: NSViewController {
   private let preferences: PenPreferences
   var didRestore: (() -> Void)?
   private let majorPicker = NSPopUpButton()
+  private var themePicker: NSSegmentedControl!
   private let setup: () -> Void
   private var values: [NSTextField] = []
   private var sliders: [NSSlider] = []
@@ -15,7 +16,7 @@ final class PenSettingsController: NSViewController {
     self.preferences = preferences
     self.setup = setup
     super.init(nibName: nil, bundle: nil)
-    preferredContentSize = CGSize(width: 295, height: 243)
+    preferredContentSize = CGSize(width: 295, height: 285)
   }
   required init?(coder: NSCoder) { nil }
 
@@ -24,10 +25,14 @@ final class PenSettingsController: NSViewController {
     let labels = ["Pen scroll speed"]
     let limits = [(0.12, 0.65)]
     let starting = [preferences.scrollSpeed]
-    let heading = chromeLabel("Writing device", size: 16, weight: .semibold)
+    let heading = chromeLabel("Options", size: 16, weight: .semibold)
     let device = chromeLabel(preferences.deviceDescription, size: 12, color: chromeMuted)
     let stack = chromeStack([heading, device], spacing: 11, horizontal: false)
     view.addSubview(stack)
+    themePicker = NSSegmentedControl(labels: ["Default", "70s Cartoon"], trackingMode: .selectOne, target: self, action: #selector(changeTheme(_:)))
+    themePicker.setAccessibilityLabel("Theme")
+    themePicker.selectedSegment = preferences.cartoonTheme ? 1 : 0
+    stack.addArrangedSubview(chromeStack([chromeLabel("Theme"), themePicker]))
     for index in labels.indices {
       let label = chromeLabel(labels[index], size: 12, weight: .medium)
       let value = chromeLabel("", size: 11, color: chromeMuted)
@@ -75,6 +80,10 @@ final class PenSettingsController: NSViewController {
     preferences.scrollSpeed = value
     display(slider.tag)
   }
+  @objc private func changeTheme(_ sender: NSSegmentedControl) {
+    preferences.cartoonTheme = sender.selectedSegment == 1
+    didRestore?()
+  }
   @objc private func changeMajor() {
     preferences.major = majorPicker.titleOfSelectedItem ?? "None"
     didRestore?()
@@ -82,6 +91,7 @@ final class PenSettingsController: NSViewController {
   @objc private func restoreAll() {
     preferences.restore()
     majorPicker.selectItem(withTitle: "None")
+    themePicker.selectedSegment = 0
     sliders[0].doubleValue = preferences.scrollSpeed
     display(0)
     didRestore?()
@@ -104,7 +114,7 @@ final class PDFPreviewController: NSWindowController, NSWindowDelegate {
       contentRect: rect, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
     super.init(window: panel)
     panel.isReleasedWhenClosed = false
-    panel.appearance = NSAppearance(named: .darkAqua)
+    panel.appearance = ChromeTheme.appearance
     panel.title = "PDF Preview"
     panel.delegate = self
     panel.collectionBehavior.insert(.fullScreenAuxiliary)

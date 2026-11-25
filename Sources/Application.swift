@@ -88,6 +88,7 @@ final class GridnoteDelegate: NSObject, NSApplicationDelegate {
     }
     let app = submenu("Gridnote")
     add(app, "About Gridnote", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+    add(app, "Options…", #selector(owner.openOptions(_:)), ",", target: owner)
     app.addItem(.separator())
     add(app, "Hide Gridnote", #selector(NSApplication.hide(_:)), "h")
     add(

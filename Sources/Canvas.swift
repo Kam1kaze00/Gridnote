@@ -48,6 +48,21 @@ final class PenPreferences {
     }
   }
 
+  func illustration(_ tool: NoteTool) -> String {
+    switch tool {
+    case .brush: return nib.lowercased()
+    case .selector: return [.tap: "tap", .box: "box-select", .lasso: "lasso"][selectionMode]!
+    case .eraser: return [.regular: "regular", .stroke: "stroke", .box: "region-erase", .lasso: "lasso-erase"][eraseMode]!
+    case .text: return code ? "code" : [.natural: "text", .left: "left", .center: "center", .right: "right"][textAlignment]!
+    case .marker: return "marker"
+    case .shapes: return [.line: "line", .arrow: "arrow", .rectangle: "box", .ellipse: "oval"][shape]!
+    case .table: return tableHeader ? "table-header" : "table"
+    }
+  }
+  var cartoonTheme: Bool {
+    get { defaults.bool(forKey: "CartoonAppearance") }
+    set { defaults.set(newValue, forKey: "CartoonAppearance") }
+  }
   var major: String {
     get {
       defaults.string(forKey: "StudyMajor").flatMap { Self.majors.contains($0) ? $0 : nil }
@@ -97,6 +112,7 @@ final class PenPreferences {
       defaults.removeObject(forKey: "PenScrollSpeed")
       defaults.removeObject(forKey: "PaletteVisible")
       defaults.removeObject(forKey: "StudyMajor")
+      defaults.removeObject(forKey: "CartoonAppearance")
     }
   }
   var pressure: Double {

@@ -51,6 +51,11 @@ export function chooseMajor(v) {
     remember();
   }
 }
+export const themes = ["Default", "70s Cartoon"];
+export function theme() { return prefs.theme === themes[1] ? themes[1] : themes[0]; }
+export function chooseTheme(value) {
+  if (themes.includes(value)) { prefs.theme = value; remember(); }
+}
 export function deviceLabel() {
   if (hardware) return hardware.name + " · Detected";
   if (observedPen)
