@@ -34,9 +34,9 @@ with tempfile.TemporaryDirectory() as scratch:
             env = dict(os.environ, GRIDNOTE_URL=address)
             tests = ["browser.cjs", "writer.cjs", "formatting.cjs", "major-tools.cjs", "themes.cjs", "image-layout.cjs", "layout.cjs"]
             if env.get("ENGINE") == "webkit":
-                tests.extend(["ipad.cjs", "organizer.cjs"])
+                tests.extend(["ipad.cjs", "organizer.cjs", "lecture.cjs"])
             elif env.get("ENGINE", "chromium") == "chromium":
-                tests.append("mobile.cjs")
+                tests.extend(["mobile.cjs", "lecture.cjs"])
             for test in tests:
                 print(f"Testing {test}", flush=True)
                 subprocess.run(["node", str(root / "Tests" / test)], cwd=root, env=env,

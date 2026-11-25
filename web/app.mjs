@@ -145,6 +145,8 @@ let touches = new Map(),
   ignoreContact = false,
   stylusCursor = null,
   liveInk = null;
+let inkBackdrop = null;
+let lastScan = null, highlightedPage = null;
 let studyItems = [],
   studySequence = 0;
 const historyLimit = 70;
@@ -243,11 +245,15 @@ function snapshot() {
   return s;
 }
 function touchSave() {
-  studyItems = [];
+  lastScan = null;
+  clearStudyHighlights();
   studySequence++;
   $("solve").textContent = "Solve";
   $("solve").disabled = false;
+  const prior = book;
   book = { ...book, revision: book.revision + 1 };
+  // Autosaving a live stroke increments its revision without changing the committed page.
+  if (inkBackdrop?.book === prior) inkBackdrop.book = book;
   dirty = true;
   updateStatus();
   if (!saveTimer)
@@ -394,8 +400,12 @@ async function openBook(next, name, state = null, stored = null) {
     throw e;
   }
   if (source) await source.destroy();
-  studyItems = [];
+  clearStudyHighlights();
+  $("solve").disabled = false;
+  $("solve").textContent = "Solve";
   studySequence++;
+  inkBackdrop = null;
+  lastScan = null;
   source = nextPDF;
   pdfCache.clear();
   resetImageCache();
@@ -519,9 +529,21 @@ $("page").onclick = () => {
   resize();
   refresh();
 };
+function refreshPageControls() {
+  const page = currentPage();
+  if (highlightedPage !== null && highlightedPage !== page) {
+    if (popupKind === "study" || popupKind === "single-study") closePop();
+    clearStudyHighlights();
+  }
+  updateSidebar(book, source, page);
+  const label = "Page " + (page + 1);
+  if ($("page").textContent !== label) $("page").textContent = label;
+  const ruling = sourceIndex(book, page) != null ? "PDF" : paper(book, page).ruling;
+  const paperLabel = "A4 · " + ruling + " ⌄";
+  if ($("paper").textContent !== paperLabel) $("paper").textContent = paperLabel;
+}
 function refresh() {
   if (!book) return;
-  updateSidebar(book, source, currentPage());
   refreshSubjectStrip();
   const prefs = settings();
   for (const id of Object.keys(toolNames)) {
@@ -532,13 +554,7 @@ function refresh() {
   sheet.className = lower || gesture?.type === "pan" ? "pan" : effective();
   $("undo").disabled = !undo.length && !editing;
   $("redo").disabled = !redo.length && !editing;
-  $("page").textContent = "Page " + (currentPage() + 1);
-  $("paper").textContent =
-    "A4 · " +
-    (sourceIndex(book, currentPage()) != null
-      ? "PDF"
-      : paper(book, currentPage()).ruling) +
-    " ⌄";
+  refreshPageControls();
   $("selection").hidden = tool !== "selector" || !selection.size;
   $("selection").textContent = selection.size + " selected ⌄";
   $("zoom").textContent = Math.round(zoom * 100) + "%";
@@ -613,7 +629,7 @@ function draw() {
 }
 window.addEventListener("gridnote-paper-loaded", () => { if (book) backgroundReady(); });
 function backgroundReady() {
-  if (gesture?.type === "ink") gesture.viewKey = null;
+  if (inkBackdrop) inkBackdrop.book = null;
   draw();
 }
 function paintLiveInk(g) {
@@ -656,9 +672,11 @@ function paint() {
     );
   const live = gesture?.type === "ink" ? gesture : null;
   const viewKey = [left, top, s, sheet.width, sheet.height].join("/");
-  if (live?.backdrop && live.viewKey === viewKey) {
+  const reusable = !editing && ["brush", "marker"].includes(effective());
+  if (!reusable) inkBackdrop = null;
+  if (inkBackdrop?.book === book && inkBackdrop.viewKey === viewKey) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(live.backdrop, 0, 0);
+    ctx.drawImage(inkBackdrop.surface, 0, 0);
     ctx.setTransform(s, 0, 0, s, -left * s, -top * s);
   } else {
     ctx.setTransform(s, 0, 0, s, -left * s, -top * s);
@@ -713,13 +731,15 @@ function paint() {
         overlaps(o.frame, visible)
       )
         paintObject(ctx, o, backgroundReady);
-    if (live) {
-      const buffer = live.backdrop ?? document.createElement("canvas");
-      buffer.width = sheet.width;
-      buffer.height = sheet.height;
-      buffer.getContext("2d").drawImage(sheet, 0, 0);
-      live.backdrop = buffer;
-      live.viewKey = viewKey;
+    if (live && reusable) {
+      const surface = inkBackdrop?.surface ?? document.createElement("canvas");
+      if (surface.width !== sheet.width) surface.width = sheet.width;
+      if (surface.height !== sheet.height) surface.height = sheet.height;
+      const base = surface.getContext("2d");
+      base.setTransform(1, 0, 0, 1, 0, 0);
+      base.drawImage(sheet, 0, 0);
+      base.setTransform(s, 0, 0, s, -left * s, -top * s);
+      inkBackdrop = { surface, book, viewKey };
     }
   }
   if (live?.raw.length) paintLiveInk(live);
@@ -843,14 +863,15 @@ view.addEventListener(
       pages += 2;
       world.style.height = pages * H * scale + "px";
     }
-    refresh();
+    refreshPageControls();
+    draw();
     recordView();
   },
   { passive: true },
 );
 function pickTool(id) {
   erasingContact = false;
-  studyItems = [];
+  clearStudyHighlights();
   studySequence++;
   $("solve").disabled = false;
   $("solve").textContent = "Solve";
@@ -1244,8 +1265,11 @@ function finishGesture(p) {
     return;
   }
   let next, before;
+  const cachedPage = inkBackdrop?.book === book ? inkBackdrop : null;
+  let stroke;
   if (g.type === "ink" && g.raw.length) {
-    next = [...book.objects, currentInk()];
+    stroke = currentInk();
+    next = [...book.objects, stroke];
   } else if (g.preview) {
     next = [...book.objects, g.preview];
     if (g.type === "table") {
@@ -1297,6 +1321,12 @@ function finishGesture(p) {
       before || book.objects,
     );
   else refresh();
+  // Composite the final pressure outline just once, including multiply-blended highlighter.
+  // The raster holds paper and committed objects only. Guides and live ink stay on the sheet.
+  if (stroke && cachedPage && inkBackdrop === cachedPage) {
+    paintObject(cachedPage.surface.getContext("2d"), stroke);
+    cachedPage.book = book;
+  }
   recordView();
 }
 function penPan(dy) {
@@ -1428,7 +1458,7 @@ function touchMove(e) {
     touchGesture.anchor[0] * scale - (m.x - r.left),
     touchGesture.anchor[1] * scale - (m.y - r.top),
   );
-  refresh();
+  if (touches.size >= 2) refresh();
   return true;
 }
 document.addEventListener("pointerover", (e) => {
@@ -1664,6 +1694,54 @@ function placeEditor() {
       ? o.frame[1][1] * scale
       : Math.max(24 * scale, editor.scrollHeight + 2)) + "px";
 }
+function updateEditActions() {
+  const active = mobileSurface && !!editing;
+  const cell = editing?.parent?.table;
+  $("edit-actions").hidden = !active;
+  document.body.classList.toggle("editing-touch", active);
+  if (!active) {
+    document.body.style.removeProperty("--keyboard-inset");
+    return;
+  }
+  $("previous-cell").hidden = $("next-cell").hidden = !cell;
+  $("previous-cell").disabled = !cell || editing.cell === 0;
+  $("next-cell").disabled = !cell || editing.cell + 1 === cell.cells.length;
+  $("edit-position").textContent = cell
+    ? "Row " + (1 + Math.floor(editing.cell / cell.columns)) + " · Column " + (1 + editing.cell % cell.columns)
+    : (editing.object.codeStyle != null ? "Code" : "Text");
+  keepEditorVisible();
+}
+function keepEditorVisible() {
+  if (!mobileSurface || !editing) return;
+  const visible = window.visualViewport;
+  if (visible && Math.abs(visible.scale - 1) > 0.02) return;
+  const inset = visible ? Math.max(0, document.documentElement.clientHeight - visible.height - visible.offsetTop) : 0;
+  document.body.style.setProperty("--keyboard-inset", Math.round(inset) + "px");
+  if (!restoring) {
+    const field = editor.getBoundingClientRect(), area = view.getBoundingClientRect();
+    // Long notes can exceed the viewport. Let the text field manage its own caret in that case.
+    if (field.height + 12 < area.height) {
+      if (field.bottom > area.bottom - 6) view.scrollTop += field.bottom - area.bottom + 6;
+      else if (field.top < area.top + 6) view.scrollTop += field.top - area.top - 6;
+    }
+  }
+}
+window.visualViewport?.addEventListener("resize", keepEditorVisible);
+window.visualViewport?.addEventListener("scroll", keepEditorVisible);
+
+function advanceCell(delta) {
+  if (!editing?.parent) return;
+  const id = editing.parent.id, index = editing.cell + delta;
+  finishText();
+  const o = book.objects.find(item => item.id === id);
+  if (o && index >= 0 && index < o.table.cells.length) startCell(o, index);
+}
+for (const [id, delta] of [["previous-cell", -1], ["next-cell", 1]]) {
+  $(id).onmousedown = e => e.preventDefault();
+  $(id).onclick = () => advanceCell(delta);
+}
+$("edit-done").onmousedown = e => e.preventDefault();
+$("edit-done").onclick = () => { finishText(); refresh(); };
 function startText(p, old, caret, length = 0) {
   const prefs = settings(),
     at = [clamp(p[0], 4, W - 94), Math.max(0, p[1])],
@@ -1680,6 +1758,7 @@ function startText(p, old, caret, length = 0) {
     caret ?? editor.value.length,
     (caret ?? editor.value.length) + length,
   );
+  updateEditActions();
   recordView();
   draw();
 }
@@ -1746,6 +1825,7 @@ function startCell(o, i, caret, length = 0) {
   editing.parent = o;
   editing.cell = i;
   placeEditor();
+  updateEditActions();
   recordView();
 }
 function finishText(cancel = false) {
@@ -1754,6 +1834,7 @@ function finishText(cancel = false) {
     value = editor.value;
   const next = snapshot().objects;
   editing = null;
+  updateEditActions();
   editor.hidden = true;
   editor.blur();
   sheet.focus({ preventScroll: true });
@@ -1957,7 +2038,16 @@ sheet.ondrop = (e) => {
     }
   });
 };
+function clearStudyHighlights() {
+  studyItems = [];
+  highlightedPage = null;
+  $("solve").setAttribute("aria-pressed", "false");
+}
 function closePop() {
+  if (popupKind === "single-study") {
+    clearStudyHighlights();
+    draw();
+  }
   pop.hidden = true;
   popupKind = "";
   popupAnchor = null;
@@ -2275,7 +2365,7 @@ function tablePicker() {
       });
       b.setAttribute(
         "aria-label",
-        "Insert " + x + " columns by " + y + " rows",
+        "Insert " + x + (x === 1 ? " column by " : " columns by ") + y + (y === 1 ? " row" : " rows"),
       );
       b.tabIndex = x === 1 && y === 1 ? 0 : -1;
       b.onpointerenter = b.onfocus = () => highlight(x, y);
@@ -2914,6 +3004,7 @@ async function pdfAction(preview) {
   finishText();
   finishGesture();
   busyPDF = true;
+  const startPage = currentPage();
   const b = preview ? $("preview") : $("export"),
     old = b.textContent;
   $("preview").disabled = $("export").disabled = true;
@@ -2926,7 +3017,7 @@ async function pdfAction(preview) {
     if (preview) {
       if (pdfPreview) await pdfPreview.destroy();
       pdfPreview = await readPDF(pdfResult.slice());
-      pdfIndex = 0;
+      pdfIndex = clamp(startPage, 0, pdfPreview.numPages - 1);
       $("pdfshare").hidden = !canSharePDF();
       $("pdfmodal").showModal();
       await updatePreview();
@@ -2938,14 +3029,15 @@ async function pdfAction(preview) {
   }
 }
 $("solve").onclick = async () => {
+  const closingSingle = popupKind === "single-study";
   closePop();
+  if (closingSingle) return;
   finishText();
   finishGesture();
   const b = $("solve"),
     seq = ++studySequence;
   if (studyItems.length) {
-    studyItems = [];
-    b.setAttribute("aria-pressed", "false");
+    clearStudyHighlights();
     draw();
     return;
   }
@@ -2955,7 +3047,9 @@ $("solve").onclick = async () => {
   b.textContent = "Scanning…";
   b.disabled = true;
   try {
-    const { found, error } = await scanProblems(book, source, page);
+    const result = lastScan?.book === book && lastScan.page === page
+      ? lastScan.result : await scanProblems(book, source, page);
+    const { found, error } = result;
     if (
       seq !== studySequence ||
       id !== book.id ||
@@ -2963,9 +3057,15 @@ $("solve").onclick = async () => {
       page !== currentPage()
     )
       return;
+    if (!error) lastScan = { book, page, result };
     studyItems = found;
+    highlightedPage = found.length ? page : null;
     b.setAttribute("aria-pressed", String(!!found.length));
     draw();
+    if (found.length === 1) {
+      openPop(b, "single-study", "Solve", () => studyContent(pop, found[0]));
+      return;
+    }
     notify(
       found.length
         ? "Tap a highlighted exercise."
@@ -3042,10 +3142,7 @@ document.addEventListener("keydown", (e) => {
   if (isEntry(e.target)) {
     if (e.target === editor && editing?.parent && e.key === "Tab" && !mod && !e.altKey) {
       e.preventDefault();
-      const id = editing.parent.id, index = editing.cell + (e.shiftKey ? -1 : 1);
-      finishText();
-      const o = book.objects.find(x => x.id === id);
-      if (o && index >= 0 && index < o.table.cells.length) startCell(o, index);
+      advanceCell(e.shiftKey ? -1 : 1);
       return;
     }
     if (
@@ -3257,7 +3354,7 @@ $("imagefile").onchange = () =>
     for (const f of fs) await insertImage(f);
   });
 $("addimage").onclick = () => imageMenu();
-$("undo").onpointerdown = $("redo").onpointerdown = (e) => e.preventDefault();
+$("undo").onmousedown = $("redo").onmousedown = (e) => e.preventDefault();
 $("clear-page-text").onclick = () => {
   closePop();
   clearNotebook(true, currentPage());

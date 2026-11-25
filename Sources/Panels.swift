@@ -109,7 +109,7 @@ final class PDFPreviewController: NSWindowController, NSWindowDelegate {
   private var pdfData: Data
   private var shareName: String
   private var sharing: NSSharingServicePicker?
-  init?(data: Data, parentSize: CGSize, name: String = "Notebook") {
+  init?(data: Data, parentSize: CGSize, page: Int = 0, name: String = "Notebook") {
     pdfData = data
     shareName = name
     guard let document = PDFDocument(data: data) else { return nil }
@@ -157,6 +157,10 @@ final class PDFPreviewController: NSWindowController, NSWindowDelegate {
       row.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 15),
       row.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -13),
     ])
+    root.layoutSubtreeIfNeeded()
+    if let initial = document.page(at: min(max(0, page), document.pageCount - 1)) {
+      pdf.go(to: initial)
+    }
   }
   required init?(coder: NSCoder) { nil }
   @objc private func sharePDF(_ sender: NSView) {
