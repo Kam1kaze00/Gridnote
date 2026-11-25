@@ -61,6 +61,8 @@ Choose a theme in the launcher or open **Options → Theme** while writing. The 
 
 Choose a tool in the row below the writing toolbar. Adjust its inputs and use **Insert** to put the result on the page. The full set works offline.
 
+The panel fits the selected tool and resizes as its result changes. [See the Solve and calculator panels in all five themes](docs/images/study-panels.png).
+
 | Major | Tools |
 | --- | --- |
 | Chemistry | Periodic table, molar mass, molarity, dilution, mass to moles, ideal gas |

@@ -18,6 +18,7 @@ async function main() {
     page.setDefaultTimeout(10000);
     await page.goto(process.env.GRIDNOTE_URL);
     const major = page.getByLabel("Major", { exact: true });
+    await major.locator("option").first().waitFor({ state: "attached" });
     const names = await major.locator("option").allTextContents();
     assert.equal(names.length, 8);
     for (const name of names) {
@@ -40,6 +41,11 @@ async function main() {
         await panel.locator("#insert:enabled").waitFor();
         assert.equal(await panel.locator("#tool").inputValue(), label);
         assert((await panel.locator("#result").textContent()).trim());
+        await page.waitForFunction(() => {
+          const frame = document.querySelector(".subject-frame");
+          const body = frame?.contentDocument?.body;
+          return body && Math.abs(frame.clientHeight - body.getBoundingClientRect().height) < 2;
+        });
         await page.locator("#subject-strip strong").click();
       }
       await page.click("#files");

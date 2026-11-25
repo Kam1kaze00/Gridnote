@@ -167,3 +167,14 @@ if (tools.some((t) => t.name === requestedTool))
 $("tool").onchange = render;
 render();
 document.body.hidden = false;
+function reportSize() {
+  const size = {
+    height: Math.ceil(document.body.getBoundingClientRect().height),
+    periodic: Boolean(current?.periodic),
+  };
+  const native = window.webkit?.messageHandlers?.gridnoteSize;
+  if (native) native.postMessage(size);
+  else if (parent !== window)
+    parent.postMessage({ type: "gridnote-study-size", ...size }, location.origin);
+}
+new ResizeObserver(reportSize).observe(document.body);

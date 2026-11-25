@@ -1111,6 +1111,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       pop?.performClose(nil)
       self?.canvas.insertStudyResult(text)
     }
+    panel.didResize = { [weak pop] size in pop?.contentSize = size }
     _ = panel.view
     pop.contentViewController = panel
     ChromeTheme.styleControls(panel.view)
@@ -1162,7 +1163,6 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     panel.behavior = .transient
     panel.appearance = ChromeTheme.appearance
     panel.contentViewController = controller
-    ChromeTheme.styleControls(controller.view)
     panel.contentSize = controller.preferredContentSize
     if let problem {
       panel.show(

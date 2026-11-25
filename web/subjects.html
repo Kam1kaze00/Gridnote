@@ -15,12 +15,12 @@
       box-sizing: border-box;
     }
     body {
-      padding: 4px 10px 14px;
+      padding: 12px;
       margin: 0;
     }
     h1 {
       font-size: 17px;
-      margin: 4px 0 10px;
+      margin: 0 0 10px;
     }
     label {
       display: grid;
@@ -45,6 +45,31 @@
     select,
     input {
       width: 100%;
+      height: 32px;
+    }
+    label:has(> select) { position: relative; }
+    label > select {
+      appearance: none;
+      padding-inline-end: 26px;
+    }
+    label:has(> select)::after {
+      content: "";
+      position: absolute;
+      right: 11px;
+      bottom: 14px;
+      width: 6px;
+      height: 6px;
+      border: solid currentColor;
+      border-width: 0 1.5px 1.5px 0;
+      transform: rotate(45deg);
+      pointer-events: none;
+    }
+    #fields label {
+      align-content: space-between;
+    }
+    @media (pointer: coarse) {
+      select, input, #insert { min-height: 44px; }
+      label:has(> select)::after { bottom: 20px; }
     }
     #fields {
       display: grid;
@@ -96,22 +121,6 @@
     input:focus-visible,
     select:focus-visible {
       outline: 2px solid #78cebd;
-    }
-    body:has(#periodic:not([hidden])) {
-      height: 100dvh;
-      min-height: 315px;
-      display: flex;
-      flex-direction: column;
-    }
-    #periodic:not([hidden]) {
-      display: flex;
-      flex-direction: column;
-      min-height: 70px;
-      flex: 1;
-    }
-    #scroll {
-      flex: 1;
-      max-height: none;
     }
     #formula:empty,
     #fields:empty {

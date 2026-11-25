@@ -3,12 +3,18 @@ import WebKit
 
 final class StudyInsertHandler: NSObject, WKScriptMessageHandler {
   var insert: ((String) -> Void)?
+  var resize: ((CGFloat, Bool) -> Void)?
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    guard message.frameInfo.isMainFrame, message.frameInfo.request.url?.isFileURL == true,
-      let text = message.body as? String, !text.isEmpty, text.count <= 4096
-    else { return }
+    guard message.frameInfo.isMainFrame, message.frameInfo.request.url?.isFileURL == true else { return }
+    if message.name == "gridnoteSize" {
+      guard let data = message.body as? [String: Any], let height = data["height"] as? Double,
+        height.isFinite, height > 0, let periodic = data["periodic"] as? Bool else { return }
+      resize?(CGFloat(height), periodic)
+      return
+    }
+    guard let text = message.body as? String, !text.isEmpty, text.count <= 4096 else { return }
     insert?(text)
   }
 }
@@ -17,6 +23,7 @@ final class SubjectToolsController: NSViewController {
   let major: String
   let tool: String?
   let handler = StudyInsertHandler()
+  var didResize: ((CGSize) -> Void)?
   init(major: String, tool: String? = nil, insert: @escaping (String) -> Void) {
     self.major = major
     self.tool = tool
@@ -28,10 +35,17 @@ final class SubjectToolsController: NSViewController {
     let config = WKWebViewConfiguration()
     config.websiteDataStore = .nonPersistent()
     config.userContentController.add(handler, name: "gridnoteInsert")
+    config.userContentController.add(handler, name: "gridnoteSize")
     let web = WKWebView(frame: .zero, configuration: config)
     view = web
-    preferredContentSize = CGSize(
-      width: major == "Chemistry" ? 646 : 455, height: major == "Chemistry" ? 460 : 395)
+    preferredContentSize = CGSize(width: tool == "Periodic table" ? 646 : 455, height: 245)
+    handler.resize = { [weak self] height, periodic in
+      guard let self else { return }
+      let size = CGSize(width: periodic ? 646 : 455, height: min(ceil(height), 520))
+      guard size != self.preferredContentSize else { return }
+      self.preferredContentSize = size
+      self.didResize?(size)
+    }
     let url =
       Bundle.main.url(forResource: "subjects", withExtension: "html")
       ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

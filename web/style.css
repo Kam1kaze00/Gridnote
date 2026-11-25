@@ -688,10 +688,13 @@ footer #selection {
 
 #popover:has(.subject-frame) {
   width: min(470px, calc(100vw - 14px));
+  padding: 0;
 }
 .subject-frame {
+  display: block;
   width: 100%;
-  height: min(405px, 58dvh);
+  height: 240px;
+  max-height: min(80dvh, 520px);
   border: 0;
   background: #222a32;
 }
@@ -758,7 +761,7 @@ footer #selection {
   }
 }
 
-#popover:has(iframe[data-major="Chemistry"]) {
+#popover:has(iframe[data-periodic="true"]) {
   width: min(660px, calc(100vw - 14px));
 }
 

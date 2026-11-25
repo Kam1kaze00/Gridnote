@@ -235,6 +235,11 @@ final class StudyPanel: NSViewController {
     view = Surface(chromeToolbar)
     let stack = chromeStack([], spacing: 8, horizontal: false)
     view.addSubview(stack)
+    defer {
+      ChromeTheme.styleControls(stack)
+      let size = stack.fittingSize
+      preferredContentSize = CGSize(width: ceil(size.width) + 28, height: ceil(size.height) + 24)
+    }
     NSLayoutConstraint.activate([
       stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
       stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
@@ -242,11 +247,13 @@ final class StudyPanel: NSViewController {
     stack.addArrangedSubview(chromeLabel("Solve", size: 15, weight: .semibold))
     guard let problem else {
       let label = NSTextField(wrappingLabelWithString: message)
-      label.widthAnchor.constraint(equalToConstant: 270).isActive = true
+      label.preferredMaxLayoutWidth = 272
+      label.widthAnchor.constraint(equalToConstant: 272).isActive = true
+      label.setContentCompressionResistancePriority(.required, for: .vertical)
       stack.addArrangedSubview(label)
-      preferredContentSize = CGSize(width: 300, height: 85)
       return
     }
+    stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 305).isActive = true
     func area(_ text: NSTextView, _ height: CGFloat, _ editable: Bool) -> NSScrollView {
       let scroll = NSScrollView()
       scroll.hasVerticalScroller = true
@@ -261,7 +268,6 @@ final class StudyPanel: NSViewController {
       text.textContainerInset = CGSize(width: 4, height: 4)
       text.autoresizingMask = [.width]
       text.textContainer?.widthTracksTextView = true
-      scroll.widthAnchor.constraint(equalToConstant: 305).isActive = true
       scroll.heightAnchor.constraint(equalToConstant: height).isActive = true
       return scroll
     }
@@ -272,10 +278,12 @@ final class StudyPanel: NSViewController {
       preview.imageScaling = .scaleProportionallyUpOrDown
       preview.setAccessibilityLabel(problem.origin ?? "Scanned exercise")
       preview.heightAnchor.constraint(equalToConstant: 72).isActive = true
-      preview.widthAnchor.constraint(equalToConstant: 305).isActive = true
       stack.addArrangedSubview(preview)
+      preview.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
-    stack.addArrangedSubview(area(entry, 65, true))
+    let input = area(entry, 65, true)
+    stack.addArrangedSubview(input)
+    input.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     entry.string = problem.text
     let solve = NSButton(title: "Solve", target: self, action: #selector(calculate))
     ask = NSButton(title: "Ask AI", target: self, action: #selector(askAI))
@@ -284,8 +292,9 @@ final class StudyPanel: NSViewController {
     let chat = NSButton(title: "Copy to ChatGPT", target: self, action: #selector(openChat))
     chat.toolTip = "Copy this exercise and open ChatGPT to paste it"
     stack.addArrangedSubview(chromeStack([solve, ask, chat], spacing: 5))
-    stack.addArrangedSubview(area(resultView, 134, false))
-    preferredContentSize = CGSize(width: 335, height: cropImage == nil ? 285 : 365)
+    let output = area(resultView, 134, false)
+    stack.addArrangedSubview(output)
+    output.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     if problem.review {
       resultView.string =
         problem.text.isEmpty

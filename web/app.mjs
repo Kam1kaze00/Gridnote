@@ -132,6 +132,7 @@ let pdfCache = new Map(),
   pdfIndex = 0,
   previewEpoch = 0,
   popupKind = "",
+  popupAnchor,
   paperScope = "page",
   noticeTimer;
 let touches = new Map(),
@@ -1859,13 +1860,19 @@ sheet.ondrop = (e) => {
 function closePop() {
   pop.hidden = true;
   popupKind = "";
+  popupAnchor = null;
 }
 function openPop(anchor, type, heading, build) {
   pop.oninput = null;
-  pop.replaceChildren($el("h2", heading));
+  pop.replaceChildren();
+  if (heading) pop.append($el("h2", heading));
   popupKind = type;
+  popupAnchor = anchor;
   build();
   pop.hidden = false;
+  positionPop(anchor);
+}
+function positionPop(anchor) {
   const r = anchor.getBoundingClientRect(),
     pw = pop.offsetWidth,
     ph = pop.offsetHeight;
@@ -2195,12 +2202,12 @@ function refreshSubjectStrip() {
   shelf.append($el("strong", name));
   for (const entry of GridnoteKits.kits[name]) {
     const chip = button(entry.name, () => {
-      openPop(chip, "subjects", entry.name, () => {
+      openPop(chip, "subjects", null, () => {
         const frame = $el("iframe");
         frame.title = entry.name;
         frame.src = "./subjects.html?tool=" + encodeURIComponent(entry.name) + "&theme=" + encodeURIComponent(theme()) + "#" + encodeURIComponent(name);
         frame.className = "subject-frame";
-        frame.dataset.major = name;
+        frame.dataset.periodic = String(Boolean(entry.periodic));
         pop.append(frame);
       });
     });
@@ -2214,12 +2221,19 @@ window.addEventListener("message", (e) => {
     pop.hidden ||
     !frame ||
     e.origin !== location.origin ||
-    e.source !== frame.contentWindow ||
-    e.data?.type !== "gridnote-study-result" ||
-    typeof e.data.text !== "string" ||
-    e.data.text.length > 4096
+    e.source !== frame.contentWindow
   )
     return;
+  if (e.data?.type === "gridnote-study-size") {
+    const {height, periodic} = e.data;
+    if (!Number.isFinite(height) || height <= 0 || typeof periodic !== "boolean") return;
+    frame.dataset.periodic = String(periodic);
+    frame.style.height = Math.ceil(height) + "px";
+    positionPop(popupAnchor);
+    return;
+  }
+  if (e.data?.type !== "gridnote-study-result" || typeof e.data.text !== "string" ||
+    e.data.text.length > 4096) return;
   closePop();
   startText(insertion());
   editing.object.codeStyle = null;

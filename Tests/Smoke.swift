@@ -527,6 +527,25 @@ import WebKit
       near: [CGRect(x: 100, y: 100, width: 50, height: 20)], tolerance: 4)
     expect(snap.0.x == -2 && snap.1.count == 1, "alignment snaps an edge within screen tolerance")
     let solve = StudySolver()
+    for theme in NotebookTheme.allCases {
+      ChromeTheme.current = theme
+      let message = "No supported problem found on this page. Type an equation, or add a code block in Text options."
+      let short = StudyPanel(solver: solve, problem: nil, message: "Image text recognition was unavailable.")
+      _ = short.view
+      let panel = StudyPanel(solver: solve, problem: nil, message: message)
+      let view = panel.view
+      view.setFrameSize(panel.preferredContentSize)
+      view.layoutSubtreeIfNeeded()
+      let stack = view.subviews[0] as! NSStackView
+      let title = stack.arrangedSubviews[0], body = stack.arrangedSubviews[1] as! NSTextField
+      let t = title.convert(title.bounds, to: view), b = body.convert(body.bounds, to: view)
+      expect(abs(t.minX - b.minX) < 1 && abs(b.minX - (view.bounds.maxX - b.maxX)) < 1 &&
+        abs(b.minY - 12) < 1.1 && abs(view.bounds.maxY - t.maxY - 12) < 1.1 &&
+        b.height >= body.intrinsicContentSize.height - 1 &&
+        panel.preferredContentSize.height > short.preferredContentSize.height,
+        theme.rawValue + " Solve fits its wrapped message with even padding")
+    }
+    ChromeTheme.current = preferences.theme
     expect(
       solve.result("2x + 3 = 11", code: false)?["answer"] as? String == "x = 4",
       "offline linear solution from shared parser")
@@ -604,19 +623,35 @@ import WebKit
     var inserted = ""
     let kit = SubjectToolsController(major: "Computer Science", tool: "Two’s complement") { inserted = $0 }
     let web = kit.view as! WKWebView
-    let webWindow = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 440, height: 380), styleMask: [.titled],
-      backing: .buffered, defer: false)
-    webWindow.contentView = web
-    webWindow.orderBack(nil)
-    for _ in 0..<100 where inserted.isEmpty {
+    let kitPopover = NSPopover()
+    kitPopover.animates = false
+    kitPopover.contentViewController = kit
+    kitPopover.contentSize = kit.preferredContentSize
+    var measuredKitSize: CGSize?
+    kit.didResize = { [weak kitPopover] size in
+      kitPopover?.contentSize = size
+      measuredKitSize = size
+    }
+    kitPopover.show(relativeTo: .zero, of: screen, preferredEdge: .maxY)
+    for _ in 0..<100 where inserted.isEmpty || measuredKitSize == nil {
       pump(0.06)
       web.evaluateJavaScript("document.getElementById('insert')?.click()")
     }
     expect(
       inserted.contains("11111101") && inserted.contains("0xFD"),
       "native shortcut opens the chosen tool and inserts the signed binary result")
-    webWindow.orderOut(nil)
+    let validHeight = kitPopover.contentSize.height
+    web.evaluateJavaScript("""
+      const field = document.querySelector('#fields input');
+      field.value = ''; field.dispatchEvent(new Event('input'));
+      """)
+    for _ in 0..<100 where kitPopover.contentSize.height >= validHeight { pump(0.03) }
+    let errorHeight = kitPopover.contentSize.height
+    expect(errorHeight < validHeight, "major popover shrinks when an invalid input hides Insert")
+    web.evaluateJavaScript("field.value = '-3'; field.dispatchEvent(new Event('input'));")
+    for _ in 0..<100 where kitPopover.contentSize.height == errorHeight { pump(0.03) }
+    expect(kitPopover.contentSize.height == validHeight, "major popover grows back to fit the result")
+    kitPopover.close()
     let buttonState = TabletButtons()
     var mapped = buttonState
     expect(mapped.update(raw: [.penUpperSide], upper: nil, lower: nil), "raw upper switch edge")
