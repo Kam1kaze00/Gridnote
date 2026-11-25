@@ -1320,6 +1320,12 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     else { return }
     let isVisible = visibleRect.intersects(group.insetBy(dx: -12, dy: -12))
     let location = isVisible ? group.origin + CGPoint(x: 12, y: 12) : insertionOrigin
+    if objects.count == 1, case .image = objects[0].content {
+      var copy = objects[0]
+      copy.id = UUID()
+      placeImage(copy, near: location)
+      return
+    }
     let dx = max(0, min(paperSize.width - group.width, max(0, location.x))) - group.minX
     let dy = max(0, location.y) - group.minY
     let copies = objects.map { object -> NoteObject in
@@ -1340,14 +1346,27 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private func importImage(_ data: Data, at location: CGPoint? = nil) {
     do {
       let image = try PaperRenderer.importImage(data)
-      let size = image.size
-      let origin = location ?? insertionOrigin
-      let point = CGPoint(
-        x: max(0, min(origin.x, paperSize.width - size.width)), y: max(0, origin.y))
-      insert(
-        [.init(frame: CGRect(origin: point, size: size), content: .image(image.data))],
-        name: "Insert Image")
+      let object = NoteObject(frame: CGRect(origin: .zero, size: image.size), content: .image(image.data))
+      placeImage(object, near: location ?? insertionOrigin, pageY: location?.y)
     } catch { reportError?("Couldn’t use that image", error) }
+  }
+
+  private func placeImage(_ object: NoteObject, near origin: CGPoint, pageY: CGFloat? = nil) {
+    let visible = visibleRect
+    let viewport = visible.isEmpty ? paperSize : visible.size
+    let ptPerMM = 72.0 / 25.4
+    let maxWidth = min(150 * ptPerMM, viewport.width * 0.85)
+    let maxHeight = min(100 * ptPerMM, viewport.height * 0.6)
+    let size = object.frame.size
+    let factor = min(1, maxWidth / size.width, maxHeight / size.height)
+    let focus = pageY ?? (visible.minY + min(visible.height * 0.24, 85))
+    let top = max(0, floor(focus / paperSize.height)) * paperSize.height
+    let point = CGPoint(
+      x: max(paperGrid, min(origin.x, paperSize.width - paperGrid - size.width * factor)),
+      y: max(top + paperGrid, min(origin.y, top + paperSize.height - paperGrid - size.height * factor)))
+    let placed = object.transformed(from: object.frame.origin, scale: factor, offset: point - object.frame.origin)
+    insert([placed], name: "Insert Image")
+    scrollToVisible(placed.frame)
   }
 
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {

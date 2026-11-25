@@ -1,4 +1,4 @@
-import { imageSize } from "./image-size.mjs";
+import { imageSize, initialImageSize } from "./image-size.mjs";
 import { pageSidebar } from "./pages.mjs";
 import { arrangedPages, sourceIndex } from "./engine.mjs";
 import { erasePart } from "./eraser.mjs";
@@ -1867,14 +1867,15 @@ function insertion() {
     view.scrollTop / scale + Math.min(50, (view.clientHeight / scale) * 0.15),
   ];
 }
-async function insertImage(file, onPage = null) {
+async function insertImage(file, onPage = null, dropPoint = null) {
+  const notebookID = book.id;
   const url = URL.createObjectURL(file),
     img = new Image();
   try {
     img.src = url;
     await img.decode();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const [width, height] = imageSize(
+    const natural = imageSize(
       bytes,
       img.naturalWidth,
       img.naturalHeight,
@@ -1899,42 +1900,35 @@ async function insertImage(file, onPage = null) {
         throw Error("The image is too large to decode on this device.");
       data = bytes64(new Uint8Array(await blob.arrayBuffer()));
     }
-    const p = insertion();
-    p[0] = Math.max(0, Math.min(p[0], W - width));
-    if (onPage !== null) {
-      const top = onPage * H,
-        last = book.objects
-          .filter((o) => o.frame[0][1] >= top && o.frame[0][1] < top + H)
-          .reduce(
-            (m, o) => Math.max(m, o.frame[0][1] + o.frame[1][1]),
-            top + 2 * G,
-          );
-      const maxY = Math.max(top, top + H - height - 2 * G);
-      const shownTop = Math.min(
-        maxY,
-        Math.max(top + 2 * G, view.scrollTop / scale + 2 * G),
-      );
-      p[0] = Math.max(0, (W - width) / 2);
-      p[1] = last + G <= maxY ? Math.max(shownTop, last + G) : shownTop;
-      if (
-        p[1] < view.scrollTop / scale ||
-        p[1] > (view.scrollTop + view.clientHeight) / scale - 30
-      )
-        view.scrollTop = Math.max(0, (p[1] - G) * scale);
-    }
-    replaceObjects(
-      [
-        {
-          id: uid(),
-          frame: [p, [width, height]],
-          content: { image: { _0: data } },
-        },
-      ],
-      "Insert image",
-    );
+    if (book?.id !== notebookID) return;
+    const object = { id: uid(), frame: [[0, 0], natural], content: { image: { _0: data } } };
+    const page = onPage ?? (dropPoint ? Math.max(0, Math.floor(dropPoint[1] / H)) : currentPage());
+    placeImage(object, dropPoint ?? insertion(), page, onPage !== null);
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+function placeImage(object, preferred, page, camera = false) {
+  const visibleWidth = view.clientWidth / scale || W, visibleHeight = view.clientHeight / scale || H;
+  const [width, height] = initialImageSize(object.frame[1], visibleWidth, visibleHeight);
+  const top = page * H, maxY = top + H - G - height;
+  let [x, y] = preferred;
+  if (camera) {
+    const last = book.objects
+      .filter(o => o.frame[0][1] >= top && o.frame[0][1] < top + H)
+      .reduce((end, o) => Math.max(end, o.frame[0][1] + o.frame[1][1]), top + 2 * G);
+    x = view.scrollLeft / scale + (visibleWidth - width) / 2;
+    y = Math.max(view.scrollTop / scale + 2 * G, last + G <= maxY ? last + G : top + 2 * G);
+  }
+  x = clamp(x, G, W - G - width);
+  y = clamp(y, top + G, maxY);
+  const [anchor, size] = object.frame;
+  const placed = transform(object, anchor, width / size[0], x - anchor[0], y - anchor[1]);
+  replaceObjects([placed], "Insert image");
+  if (y < view.scrollTop / scale || y + height > view.scrollTop / scale + visibleHeight)
+    view.scrollTop = Math.max(0, (y - G) * scale);
+  if (x < view.scrollLeft / scale || x + width > view.scrollLeft / scale + visibleWidth)
+    view.scrollLeft = Math.max(0, (x - G) * scale);
 }
 let clipObjects = [];
 function copySelection(e) {
@@ -1962,8 +1956,12 @@ function pasteCopies(items) {
       [view.scrollLeft / scale, view.scrollTop / scale],
       [view.clientWidth / scale, view.clientHeight / scale],
     ];
-  const nearPage = overlaps(box, visible),
-    dx = clamp(nearPage ? x + 12 : p[0], 0, Math.max(0, W - w)) - x,
+  const nearPage = overlaps(box, visible);
+  if (items.length === 1 && kind(items[0]) === "image") {
+    placeImage({ ...items[0], id: uid() }, nearPage ? [x + 12, y + 12] : p, currentPage());
+    return;
+  }
+  const dx = clamp(nearPage ? x + 12 : p[0], 0, Math.max(0, W - w)) - x,
     dy = (nearPage ? y + 12 : p[1]) - y;
   replaceObjects(
     items.map((o) => ({ ...transform(o, [0, 0], 1, dx, dy), id: uid() })),
@@ -2031,9 +2029,10 @@ document.addEventListener("paste", (e) => {
 sheet.ondragover = (e) => e.preventDefault();
 sheet.ondrop = (e) => {
   e.preventDefault();
+  const at = point(e), files = Array.from(e.dataTransfer.files);
   run(async () => {
-    for (const file of e.dataTransfer.files) {
-      if (file.type.startsWith("image/")) await insertImage(file);
+    for (const file of files) {
+      if (file.type.startsWith("image/")) await insertImage(file, null, at);
       else await importBook(file);
     }
   });

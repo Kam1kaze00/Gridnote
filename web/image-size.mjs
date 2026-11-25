@@ -85,3 +85,12 @@ export function imageSize(bytes, orientedWidth, orientedHeight) {
   const dpi = (d) => (Number.isFinite(d) && d > 0 ? d : 96);
   return [(orientedWidth * 72) / dpi(dx), (orientedHeight * 72) / dpi(dy)];
 }
+
+// Start within 15 × 10 cm on A4, leaving space to write in the current viewport.
+export function initialImageSize([width, height], visibleWidth, visibleHeight) {
+  const ptPerMM = 72 / 25.4;
+  const maxWidth = Math.min(150 * ptPerMM, visibleWidth * 0.85);
+  const maxHeight = Math.min(100 * ptPerMM, visibleHeight * 0.6);
+  const factor = Math.min(1, maxWidth / width, maxHeight / height);
+  return [width * factor, height * factor];
+}
