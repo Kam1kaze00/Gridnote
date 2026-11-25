@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Kam1kaze00/Gridnote/desktop/account"
 	"io"
 	"io/fs"
 	"log"
@@ -61,12 +62,36 @@ func explain(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 85 * time.Second}
 	reply, err := client.Do(req)
 	if err != nil {
-		http.Error(w, `{"error":"Use Copy to ChatGPT, or start the optional local study server."}`, 503)
+		http.Error(w, `{"error":"Use Ask AI with your ChatGPT account, or start the optional study server."}`, 503)
 		return
 	}
 	defer reply.Body.Close()
 	w.WriteHeader(reply.StatusCode)
 	io.Copy(w, io.LimitReader(reply.Body, 200000))
+}
+
+// Only the local Gridnote editor can initiate sign-in or send an exercise.
+func chatGPT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost || r.Host != address || r.Header.Get("Origin") != origin || r.Header.Get("X-Gridnote-Request") != "1" {
+		http.Error(w, `{"error":"Open the local Gridnote notebook first."}`, http.StatusForbidden)
+		return
+	}
+	var request account.Request
+	body := http.MaxBytesReader(w, r.Body, 14<<20)
+	defer body.Close()
+	if err := json.NewDecoder(body).Decode(&request); err != nil {
+		http.Error(w, `{"error":"Select one exercise or a smaller image."}`, http.StatusBadRequest)
+		return
+	}
+	timeout := 2 * time.Minute
+	if request.Action == "connect" {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+	json.NewEncoder(w).Encode(account.Run(ctx, request))
 }
 
 // Read only product labels reported by the local OS. No device access prompt is needed.
@@ -146,6 +171,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(site)))
 	mux.HandleFunc("/_gridnote", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, identity) })
 	mux.HandleFunc("/api/explain", explain)
+	mux.HandleFunc("/api/chatgpt", chatGPT)
 	mux.HandleFunc("/_gridnote-device", detectedDevice)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != address {

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a self-contained desktop launcher from the prepared standalone site."""
+from account_notices import collect
 import argparse
 import os
 import platform
@@ -24,17 +25,21 @@ args.destination.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory() as tmp:
     project = Path(tmp)
     shutil.copytree(args.site, project / "site")
-    shutil.copy(root / "Desktop" / "main.go", project)
+    for source in ("main.go", "go.mod", "go.sum"):
+        shutil.copy(root / "Desktop" / source, project)
+    shutil.copytree(root / "Desktop" / "account", project / "account")
     name = "Gridnote" + (".exe" if args.os == "windows" else "")
     env = dict(os.environ, GOOS=args.os, GOARCH=args.arch, CGO_ENABLED="0")
-    subprocess.run(["go", "build", "-trimpath", "-ldflags=-s -w", "-o", name, "main.go"],
+    subprocess.run(["go", "build", "-trimpath", "-ldflags=-s -w", "-o", name, "."],
                    cwd=project, env=env, check=True)
     target = args.destination / f"Gridnote-{args.os}-{args.arch}.zip"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(project / name, name)
         archive.write(root / "LICENSE", "LICENSE")
-        toolchain = Path(subprocess.check_output(["go", "env", "GOROOT"], text=True).strip())
-        archive.write(toolchain / "LICENSE", "licenses/Go-LICENSE")
+        notices = project / "licenses"
+        collect(notices)
+        for notice in sorted(notices.iterdir()):
+            archive.write(notice, "licenses/" + notice.name)
         for notice in sorted((args.site / "vendor").rglob("*")):
             if notice.is_file() and ("LICENSE" in notice.name.upper() or "NOTICE" in notice.name.upper()):
                 archive.write(notice, "licenses/" + notice.relative_to(args.site / "vendor").as_posix())

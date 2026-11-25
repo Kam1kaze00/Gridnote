@@ -80,7 +80,7 @@ class StudyHandler(SimpleHTTPRequestHandler):
             return self.reply(400, error="Could not read the selected exercise.")
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
-            return self.reply(503, error="Set OPENAI_API_KEY for the local study server, or use Copy to ChatGPT.")
+            return self.reply(503, error="Configure the study server with OPENAI_API_KEY, or use Copy to take the exercise elsewhere.")
         try:
             return self.reply(200, answer=explanation(text, kind, key, image))
         except HTTPError as e:

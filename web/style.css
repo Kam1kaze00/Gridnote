@@ -635,7 +635,17 @@ footer #selection {
   padding: 6px;
   border-radius: 4px;
 }
+#popover .study-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+.study-account { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.study-account small { min-width: 0; }
+.study-account select { width: 85px; flex: none; }
 .study-answer {
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
   max-height: 32vh;
   overflow: auto;

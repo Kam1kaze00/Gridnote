@@ -844,6 +844,9 @@ new ResizeObserver(() => {
     if (popupAnchor && !pop.hidden) positionPop(popupAnchor);
   }
 }).observe(view);
+new ResizeObserver(() => {
+  if (popupAnchor && !pop.hidden) positionPop(popupAnchor);
+}).observe(pop);
 view.addEventListener(
   "scroll",
   () => {
@@ -2029,6 +2032,7 @@ function clearStudyHighlights() {
   $("solve").setAttribute("aria-pressed", "false");
 }
 function closePop() {
+  pop.dispatchEvent(new Event("panelclose"));
   if (popupKind === "single-study") {
     clearStudyHighlights();
     draw();
@@ -2038,6 +2042,7 @@ function closePop() {
   popupAnchor = null;
 }
 function openPop(anchor, type, heading, build) {
+  pop.dispatchEvent(new Event("panelclose"));
   pop.oninput = null;
   pop.replaceChildren();
   if (heading) pop.append($el("h2", heading));

@@ -35,11 +35,11 @@ Try the circuit worksheet in the screenshot as an [editable notebook](docs/examp
 
 ## Files and privacy
 
-Save an editable **.gridnote** copy to move work between devices or back it up before clearing browser storage. PDF export creates a separate document. Image recognition runs on the device. The optional **Ask AI** action sends the selected exercise to the configured study server. The hosted web app also offers a **Copy to ChatGPT** handoff.
+Save an editable **.gridnote** copy to move work between devices or back it up before clearing browser storage. PDF export creates a separate document. Image recognition runs on the device. On the Mac, Windows and Linux desktop apps, **Solve → Ask AI** opens ChatGPT sign-in on first use. Approve Gridnote and the answer appears in the same popup. Later clicks use that connection. Eligible requests use your ChatGPT plan or credits. Gridnote sends the exercise text and its preview crop when you ask. Open **Account** in the popup to manage usage or disconnect. **Copy** puts the exercise on your clipboard on every platform. The hosted iPad and Android web app offers offline Solve and Copy. [ChatGPT plan usage](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites)
 
 ## Build from source
 
-On a Mac with Command Line Tools installed, run `./build.sh` and open `build/Gridnote.app`. The downloadable Mac app is ad hoc signed. If macOS blocks the first launch, follow the instructions included in the ZIP. [Apple’s guidance](https://support.apple.com/en-us/102445)
+On a Mac with Command Line Tools and Go 1.26 or later installed, run `./build.sh` and open `build/Gridnote.app`. The downloadable Mac app is ad hoc signed. If macOS blocks the first launch, follow the instructions included in the ZIP. [Apple’s guidance](https://support.apple.com/en-us/102445)
 
 To run the portable editor locally, use Python 3 from the repository root.
 
@@ -48,6 +48,6 @@ python3 scripts/prepare_web.py build/standalone
 python3 study_server.py --site build/standalone
 ```
 
-Open [the local notebook](http://127.0.0.1:8765). To enable Ask AI, set `OPENAI_API_KEY` in the server environment. To build a Windows or Linux launcher, use `scripts/desktop.py` with Go installed. Release packaging and verification are described in the [implementation notes](docs/implementation.md).
+Open [the local notebook](http://127.0.0.1:8765). For the optional Python study server, set `OPENAI_API_KEY` in the server environment. To build a Windows or Linux launcher, use `scripts/desktop.py` with Go installed. Release packaging and verification are described in the [implementation notes](docs/implementation.md).
 
 [User guide](https://kam1kaze00.github.io/Gridnote/guide.html) · [Report an issue](https://github.com/Kam1kaze00/Gridnote/issues) · [MIT license](LICENSE)

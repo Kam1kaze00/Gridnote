@@ -237,6 +237,37 @@ async function main() {
     const hasTutor = ["http://127.0.0.1:48765", "http://127.0.0.1:8765", "http://localhost:8765"]
       .includes(new URL(page.url()).origin);
     assert.equal(await page.getByRole("button", { name: "Ask AI", exact: true }).count(), Number(hasTutor));
+    const actions = await page.locator(".study-actions button").evaluateAll(buttons =>
+      buttons.map(b => { const r=b.getBoundingClientRect(); return [r.width,r.top,r.height]; }));
+    assert(actions.every(a => a.every((v,i) => Math.abs(v-actions[0][i]) <= 1)));
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+        writeText: async text => {window.copiedExercise=text;},
+        write: async items => {window.copiedExercise=await (await items[0].getType("text/plain")).text();},
+      }});
+    });
+    const windows = context.pages().length;
+    await page.getByRole("button",{name:"Copy",exact:true}).click();
+    await page.waitForFunction(() => !!window.copiedExercise);
+    assert.equal(await page.evaluate(() => window.copiedExercise), await page.getByLabel("Recognized exercise").inputValue());
+    assert.equal(context.pages().length,windows);
+    if (new URL(page.url()).origin === "http://127.0.0.1:48765") {
+      await page.evaluate(() => {
+        const fetchOriginal = window.fetch;
+        window.tutorActions = [];
+        window.fetch = async (url, options) => {
+          if (url !== "./api/chatgpt") return fetchOriginal(url,options);
+          const req = JSON.parse(options.body);
+          window.tutorActions.push(req);
+          return Response.json({connected: true, answer: req.action === "ask" ? "The worked answer is four." : undefined});
+        };
+      });
+      await page.getByRole("button",{name:"Ask AI",exact:true}).click();
+      await page.waitForFunction(() => document.querySelector(".study-answer")?.textContent==="The worked answer is four.");
+      const requests = await page.evaluate(() => window.tutorActions);
+      assert.deepEqual(requests.map(r=>r.action),["connect","ask"]);
+      assert.equal(requests[1].text,await page.getByLabel("Recognized exercise").inputValue());
+    }
     await page.keyboard.press("Escape");
     await page.click("#preview");
     await page.waitForSelector("#pdfcanvas");
