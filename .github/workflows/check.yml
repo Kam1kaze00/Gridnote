@@ -1,0 +1,38 @@
+name: Verify Gridnote
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./build.sh
+      - run: Tests/native.sh
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, engine: chromium, target: linux }
+          - { os: windows-latest, engine: firefox, target: windows }
+          - { os: macos-latest, engine: webkit, target: darwin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: actions/setup-go@v5
+        with: { go-version: stable, cache: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python scripts/prepare_web.py build/standalone
+      - run: python scripts/desktop.py build/standalone build/releases --os ${{ matrix.target }} --arch host
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: node Tests/subjects.cjs
+      - run: node Tests/solver.cjs
+      - run: python Tests/test_server.py
+      - run: python Tests/run_browser.py
+        env:
+          ENGINE: ${{ matrix.engine }}
