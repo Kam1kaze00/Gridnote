@@ -35,7 +35,7 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 - Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. Brush includes Pen, Brush and Fineliner, smoothing and optional pressure response.
 - On a two-button pen, tap the upper switch, erase, then lift to return to Brush. Hold the lower switch and move vertically to scroll.
 - Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Pasted images keep their source size. Use **Selection → Fit Image to Page** when you want a smaller copy on paper. Drag a corner to see the size in millimetres and guides for matching an adjacent object’s width or height.
-- Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Remove Typed Text** can clean one page or all pages and preserves filled tables and other objects.
+- Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Clear Text** beside the paper control removes typed notes from the current page. Handwriting, images, tables and code stay in place. Undo restores the text.
 - Choose **Solve**, then tap a highlighted problem. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
 - **Preview PDF → Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
 

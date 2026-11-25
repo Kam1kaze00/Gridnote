@@ -21,6 +21,10 @@ import WebKit
       RunLoop.current.run(until: min(until, Date().addingTimeInterval(0.01)))
     }
   }
+  static func visibleViews<T: NSView>(_ type: T.Type, in root: NSView) -> [T] {
+    guard !root.isHidden else { return [] }
+    return (root as? T).map { [$0] } ?? root.subviews.flatMap { visibleViews(type, in: $0) }
+  }
   static func main() throws {
     _ = NSApplication.shared
     NSApp.setActivationPolicy(.regular)
@@ -506,11 +510,21 @@ import WebKit
     var later = text2
     later.id = UUID()
     canvas.notebook.objects += [text1, later]
-    canvas.clearAllWriting(typedOnly: true, page: 0)
+    owner.jumpToPage(0)
+    let originals = canvas.notebook.objects
+    let clearButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Clear Text" }
+    expect(clearButton != nil, "current-page Clear Text button is visible")
+    clearButton?.performClick(nil)
     expect(
       !canvas.notebook.objects.contains(text1) && canvas.notebook.objects.contains(later),
       "page text removal is limited to the requested page")
-    canvas.history.undo()
+    let clearedObjects = canvas.notebook.objects
+    clearButton?.performClick(nil)
+    owner.undoEdit(nil)
+    expect(canvas.notebook.objects == originals, "one Undo restores cleared text after two clicks")
+    owner.redoEdit(nil)
+    expect(canvas.notebook.objects == clearedObjects, "Redo reapplies current-page text removal")
+    owner.undoEdit(nil)
     canvas.clearAllWriting(typedOnly: true)
     expect(
       !canvas.notebook.objects.contains(text1) && !canvas.notebook.objects.contains(later)
@@ -603,6 +617,26 @@ import WebKit
     pdfBook.objects = [text1]
     canvas.load(pdfBook)
     owner.togglePages(nil)
+    let sidebar = visibleViews(PageSidebar.self, in: screen)[0]
+    for theme in NotebookTheme.allCases {
+      preferences.theme = theme
+      canvas.refreshTool()
+      screen.layoutSubtreeIfNeeded()
+      let actions = visibleViews(ChromeButton.self, in: sidebar).sorted { $0.tag < $1.tag }
+      let frames = actions.map { $0.convert($0.bounds, to: sidebar) }
+      let list = sidebar.table.enclosingScrollView!
+      let listFrame = list.convert(list.bounds, to: sidebar)
+      let heading = visibleViews(NSTextField.self, in: sidebar).first { $0.stringValue == "Pages" }!
+      let leading = heading.convert(heading.alignmentRect(forFrame: heading.bounds), to: sidebar).minX
+      expect(frames.count == 4 && abs(frames[0].minX - leading) <= 1 &&
+        abs(frames[0].minX - listFrame.minX) <= 1 && abs(frames[3].maxX - listFrame.maxX) <= 1 &&
+        abs(sidebar.bounds.maxX - frames[3].maxX - leading) <= 1 &&
+        frames.allSatisfy { abs($0.width - frames[0].width) <= 1 && abs($0.midY - frames[0].midY) <= 1 },
+        theme.rawValue + " sidebar heading, four page actions and thumbnails share their margins")
+    }
+    preferences.theme = .standard
+    canvas.refreshTool()
+    try capture("page-sidebar.png")
     owner.organize("insert", page: 0)
     expect(
       canvas.notebook.usedPages == 3 && canvas.notebook.sourceIndex(on: 1) == nil
@@ -652,6 +686,40 @@ import WebKit
     for _ in 0..<100 where kitPopover.contentSize.height == errorHeight { pump(0.03) }
     expect(kitPopover.contentSize.height == validHeight, "major popover grows back to fit the result")
     kitPopover.close()
+    pump(0.1)
+    preferences.major = "Computer Science"
+    canvas.refreshTool()
+    let calculatorButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Two’s complement" }!
+    screen.layoutSubtreeIfNeeded()
+    calculatorButton.performClick(nil)
+    let actualPopover = owner.settingsPopover
+    expect(actualPopover?.isShown == true, "major shortcut opens an editable native popover")
+    let inputView = actualPopover!.contentViewController!.view as! WKWebView
+    func script(_ js: String) -> String? {
+      var finished = false, value: String?
+      inputView.evaluateJavaScript(js) { result, _ in value = result as? String; finished = true }
+      for _ in 0..<100 where !finished { pump(0.02) }
+      return value
+    }
+    let valueJS = "document.querySelector('#fields input')?.value"
+    for _ in 0..<100 where script(valueJS) != "-3" { pump(0.03) }
+    expect(inputView.undoManager !== canvas.history && inputView.undoManager?.groupsByEvent == true,
+      "calculator field has its own event-grouped undo history")
+    let beforeEdit = canvas.notebook
+    _ = script("const edit = document.querySelector('#fields input'); edit.focus(); edit.select(); document.execCommand('insertText', false, '5')")
+    for _ in 0..<100 where inputView.undoManager?.canUndo != true { pump(0.03) }
+    expect(script(valueJS) == "5" && inputView.undoManager?.canUndo == true, "WebKit registers an actual calculator edit")
+    owner.undoEdit(nil)
+    expect(script(valueJS) == "-3", "Edit menu Undo restores the calculator input")
+    for _ in 0..<100 where inputView.undoManager?.canRedo != true { pump(0.03) }
+    owner.redoEdit(nil)
+    expect(script(valueJS) == "5" && beforeEdit.objects == canvas.notebook.objects &&
+      beforeEdit.revision == canvas.notebook.revision, "calculator Redo keeps the notebook intact")
+    _ = script("document.querySelector('#insert').click()")
+    for _ in 0..<100 where canvas.notebook.objects == beforeEdit.objects { pump(0.03) }
+    expect(canvas.notebook.objects.count == beforeEdit.objects.count + 1, "insert after editing commits one notebook object")
+    owner.undoEdit(nil)
+    expect(canvas.notebook.objects == beforeEdit.objects, "Undo after closing the calculator returns to notebook history")
     let buttonState = TabletButtons()
     var mapped = buttonState
     expect(mapped.update(raw: [.penUpperSide], upper: nil, lower: nil), "raw upper switch edge")
@@ -697,7 +765,7 @@ import WebKit
       canvas.refreshTool()
 
       let priorSize = win.frame.size
-      for theme in [NotebookTheme.tokyo, .cyber, .pixel] {
+      for theme in NotebookTheme.allCases {
         preferences.theme = theme
         canvas.refreshTool()
         canvas.setPaper(.themed(theme), on: nil)
@@ -705,11 +773,7 @@ import WebKit
           win.setContentSize(CGSize(width: width, height: 600))
           win.contentView?.layoutSubtreeIfNeeded()
           pump(0.05)
-          func visibleButtons(_ view: NSView) -> [ChromeButton] {
-            guard !view.isHidden else { return [] }
-            return (view as? ChromeButton).map { [$0] } ?? view.subviews.flatMap(visibleButtons)
-          }
-          let buttons = visibleButtons(win.contentView!)
+          let buttons = visibleViews(ChromeButton.self, in: screen)
           for group in Dictionary(grouping:buttons.filter { $0.superview is NSStackView }, by:{ObjectIdentifier($0.superview!) }).values {
             let row = group.sorted { $0.frame.minX < $1.frame.minX }
             if (row.first?.superview as? NSStackView)?.orientation == .horizontal {

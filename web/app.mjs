@@ -826,6 +826,7 @@ new ResizeObserver(() => {
   if (book) {
     resize();
     refresh();
+    if (popupAnchor && !pop.hidden) positionPop(popupAnchor);
   }
 }).observe(view);
 view.addEventListener(
@@ -2811,6 +2812,7 @@ function clearNotebook(typedOnly, page = null) {
       return [o];
     return page == null ? [] : cleared([o], page);
   });
+  if (next.length === book.objects.length && next.every((o, i) => o === book.objects[i])) return;
   setObjects(next, typedOnly ? "Remove typed text" : "Clear writing");
   selection.clear();
   refresh();
@@ -2925,6 +2927,10 @@ $("imagefile").onchange = () =>
   });
 $("addimage").onclick = () => imageMenu();
 $("undo").onpointerdown = $("redo").onpointerdown = (e) => e.preventDefault();
+$("clear-page-text").onclick = () => {
+  closePop();
+  clearNotebook(true, currentPage());
+};
 $("undo").onclick = () => {
   if (editing) {
     editor.focus();

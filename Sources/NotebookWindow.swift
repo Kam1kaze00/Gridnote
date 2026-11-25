@@ -6,7 +6,7 @@ extension UTType {
   static let gridnote = UTType(exportedAs: "app.gridnote.notebook", conformingTo: .data)
 }
 
-final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
+final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDelegate, NSMenuItemValidation {
   let canvas: NoteCanvas
   let scrollView = PaperScrollView()
   private let storage: NotebookStorage
@@ -33,7 +33,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private var displayedMajor: String?
   private var solveButton: ChromeButton!
   private var preview: PDFPreviewController?
-  private var settingsPopover: NSPopover?
+  private(set) var settingsPopover: NSPopover?
 
   private let header = Surface(chromeBackground, movable: true)
   private let toolbar = Surface(chromeToolbar)
@@ -291,7 +291,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   @objc func togglePages(_ sender: Any?) {
     let opening = pagesSidebar.isHidden
     pagesSidebar.isHidden = !opening
-    sidebarWidth.constant = opening ? 136 : 0
+    sidebarWidth.constant = opening ? PageSidebar.openWidth : 0
     pagesButton.selected = opening
     workArea.layoutSubtreeIfNeeded()
     resizeCanvas()
@@ -353,6 +353,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       "A4 · Grid", symbol: "chevron.down", target: self, action: #selector(showPaper(_:)))
     paperButton.controlHeight = 25
     paperButton.toolTip = "Page ruling and paper color"
+    let clearText = ChromeButton("Clear Text", style: .outlined, target: self,
+      action: #selector(clearPageText(_:)))
+    clearText.controlHeight = 24
+    clearText.setAccessibilityLabel("Clear typed text on this page")
+    clearText.toolTip = "Remove typed text from this page. Undo with ⌘Z."
     undoButton = ChromeButton(
       symbol: "arrow.uturn.backward", target: self, action: #selector(undoEdit(_:)))
     redoButton = ChromeButton(
@@ -365,7 +370,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     }
     let left = chromeStack(
       [
-        pagesButton, pageLabel, separator(), paperButton, separator(), undoButton, redoButton,
+        pagesButton, pageLabel, separator(), paperButton, clearText, separator(), undoButton, redoButton,
         selectionActions,
       ],
       spacing: 5)
@@ -1050,19 +1055,26 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     box.beginSheetModal(for: window!)
   }
 
+  private var editingHistory: UndoManager {
+    if let popover = settingsPopover, popover.isShown,
+      let tools = popover.contentViewController as? SubjectToolsController,
+      let manager = tools.view.undoManager { return manager }
+    return canvas.editor?.undoManager ?? canvas.history
+  }
+
   private func updateHistory() {
-    let manager = canvas.editor?.undoManager ?? canvas.history
+    let manager = editingHistory
     undoButton?.isEnabled = manager.canUndo
     redoButton?.isEnabled = manager.canRedo
   }
 
   @objc func undoEdit(_ sender: Any?) {
-    if let editor = canvas.editor { editor.undoManager?.undo() } else { canvas.history.undo() }
+    editingHistory.undo()
     updateHistory()
   }
 
   @objc func redoEdit(_ sender: Any?) {
-    if let editor = canvas.editor { editor.undoManager?.redo() } else { canvas.history.redo() }
+    editingHistory.redo()
     updateHistory()
   }
 
@@ -1102,9 +1114,16 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     row.frame = NSRect(origin: .zero, size: NSSize(width: size.width, height: 36))
     subjectScroll.documentView = row
   }
+  func popoverWillClose(_ notification: Notification) {
+    if let closing = notification.object as? NSPopover, closing === settingsPopover {
+      settingsPopover = nil
+      updateHistory()
+    }
+  }
   @objc private func openSubjects(_ sender: ChromeButton) {
     settingsPopover?.performClose(nil)
     let pop = NSPopover()
+    pop.delegate = self
     pop.behavior = .transient
     pop.appearance = ChromeTheme.appearance
     let panel = SubjectToolsController(major: preferences.major, tool: sender.caption) { [weak self, weak pop] text in
@@ -1282,7 +1301,6 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     window?.makeFirstResponder(canvas)
   }
   func windowShouldClose(_ sender: NSWindow) -> Bool { checkpoint() }
-  func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { canvas.history }
 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
@@ -1290,8 +1308,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       #selector(quickGuide(_:)):
       return true
     case #selector(deletePage(_:)): return notebookURL != nil && page < canvas.notebook.usedPages
-    case #selector(undoEdit(_:)): return (canvas.editor?.undoManager ?? canvas.history).canUndo
-    case #selector(redoEdit(_:)): return (canvas.editor?.undoManager ?? canvas.history).canRedo
+    case #selector(undoEdit(_:)): return editingHistory.canUndo
+    case #selector(redoEdit(_:)): return editingHistory.canRedo
     case #selector(previewPDF(_:)), #selector(exportPDF(_:)):
       return notebookURL != nil && !preparingPDF
     case #selector(zoomOut(_:)), #selector(fitWidth(_:)): return notebookURL != nil && zoom > 1.001

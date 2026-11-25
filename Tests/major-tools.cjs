@@ -21,45 +21,65 @@ async function main() {
     await major.locator("option").first().waitFor({ state: "attached" });
     const names = await major.locator("option").allTextContents();
     assert.equal(names.length, 8);
-    for (const name of names) {
-      await major.selectOption(name);
-      const preview = await page
-        .locator(".start-preview span")
-        .allTextContents();
-      await page.click(name === "None" ? "#new" : "#continue");
-      await page.waitForSelector("#sheet");
-      assert(await page.locator("#tool-brush").isVisible());
-      const shortcuts = page.locator("#subject-strip button");
-      assert.deepEqual(await shortcuts.allTextContents(), preview);
-      assert.equal(preview.length, name === "None" ? 0 : 6);
-      for (const label of preview) {
+    const themePicker = page.getByLabel("Theme", { exact: true });
+    const themes = await themePicker.locator("option").allTextContents();
+    for (const theme of themes) {
+      await themePicker.selectOption(theme);
+      for (const name of names) {
+        await major.selectOption(name);
+        const preview = await page
+          .locator(".start-preview span")
+          .allTextContents();
+        await page.click(theme === themes[0] && name === "None" ? "#new" : "#continue");
+        await page.waitForSelector("#sheet");
+        assert(await page.locator("#tool-brush").isVisible());
+        const shortcuts = page.locator("#subject-strip button");
+        assert.deepEqual(await shortcuts.allTextContents(), preview);
+        assert.equal(preview.length, name === "None" ? 0 : 6);
+        for (const label of preview) {
+          await page
+            .locator("#subject-strip")
+            .getByRole("button", { name: label, exact: true })
+            .click();
+          const panel = page.frameLocator("iframe.subject-frame");
+          await panel.locator("#insert:enabled").waitFor();
+          assert.equal(await panel.locator("#tool").inputValue(), label);
+          assert((await panel.locator("#result").textContent()).trim());
+          await page.waitForFunction(() => {
+            const frame = document.querySelector(".subject-frame");
+            const body = frame?.contentDocument?.body;
+            return body && Math.abs(frame.clientHeight - body.getBoundingClientRect().height) < 2;
+          });
+          const aligned = await panel.locator("body").evaluate((body) => {
+            const fields = [...body.querySelectorAll("#fields label")];
+            return body.scrollWidth <= document.documentElement.clientWidth + 1 &&
+              fields.every((label) => {
+                const row = label.getBoundingClientRect();
+                const control = label.lastElementChild.getBoundingClientRect();
+                return Math.abs(control.left - row.left) <= 1 && Math.abs(control.right - row.right) <= 1 &&
+                  fields.every((other) => {
+                    const adjacent = other.getBoundingClientRect();
+                    return Math.abs(adjacent.y - row.y) > 1 ||
+                      Math.abs(other.lastElementChild.getBoundingClientRect().bottom - control.bottom) <= 1;
+                  });
+              });
+          });
+          assert(aligned, theme + ", " + name + ", " + label + " field alignment");
+          await page.locator("#subject-strip strong").click();
+        }
+        await page.click("#files");
         await page
-          .locator("#subject-strip")
-          .getByRole("button", { name: label, exact: true })
+          .getByRole("button", { name: "Notebook launcher…", exact: true })
           .click();
-        const panel = page.frameLocator("iframe.subject-frame");
-        await panel.locator("#insert:enabled").waitFor();
-        assert.equal(await panel.locator("#tool").inputValue(), label);
-        assert((await panel.locator("#result").textContent()).trim());
-        await page.waitForFunction(() => {
-          const frame = document.querySelector(".subject-frame");
-          const body = frame?.contentDocument?.body;
-          return body && Math.abs(frame.clientHeight - body.getBoundingClientRect().height) < 2;
-        });
-        await page.locator("#subject-strip strong").click();
+        await major.waitFor();
+        assert(!(await page.locator("#sheet").isVisible()));
       }
-      await page.click("#files");
-      await page
-        .getByRole("button", { name: "Notebook launcher…", exact: true })
-        .click();
-      await major.waitFor();
-      assert(!(await page.locator("#sheet").isVisible()));
     }
     assert.deepEqual(errors, []);
     console.log(
       "PASS",
       engine,
-      "startup, all 42 major shortcuts, live results, regular tools and return to the launcher",
+      "all 42 major shortcuts in all five themes, field alignment, live results and return to launcher",
     );
   } finally {
     await browser.close();

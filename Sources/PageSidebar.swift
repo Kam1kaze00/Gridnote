@@ -1,6 +1,7 @@
 import AppKit
 
 final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
+  static let openWidth: CGFloat = 136
   let table = NSTableView()
   private let cache = NSCache<NSNumber, NSImage>()
   private var revision: UInt64?
@@ -20,7 +21,11 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     cache.countLimit = 96
     let col = NSTableColumn(identifier: .init("page"))
     col.minWidth = 90
+    col.resizingMask = .autoresizingMask
     table.addTableColumn(col)
+    table.style = .plain
+    table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+    table.intercellSpacing = NSSize(width: 0, height: 2)
     table.headerView = nil
     table.rowHeight = 130
     table.backgroundColor = .clear
@@ -33,15 +38,17 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     scroll.hasVerticalScroller = true
     scroll.drawsBackground = false
     scroll.documentView = table
-    let bar = chromeStack([], spacing: 3)
+    let inset: CGFloat = 10
+    let bar = chromeStack([], spacing: 4)
+    bar.distribution = .fillEqually
     for (idx, item) in [
       ("plus", "Insert page after"), ("arrow.up", "Move page earlier"),
       ("arrow.down", "Move page later"), ("trash", "Delete page"),
     ].enumerated() {
-      let b = NSButton(
-        image: NSImage(systemSymbolName: item.0, accessibilityDescription: item.1)!, target: self,
+      let b = ChromeButton(symbol: item.0, style: .outlined, target: self,
         action: #selector(performAction(_:)))
-      b.bezelStyle = .accessoryBarAction
+      b.controlWidth = (Self.openWidth - 2 * inset - 3 * bar.spacing) / 4
+      b.controlHeight = 26
       b.tag = idx
       b.toolTip = item.1
       b.setAccessibilityLabel(item.1)
@@ -55,12 +62,13 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
     NSLayoutConstraint.activate([
       title.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-      title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+      title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
       bar.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 5),
-      bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-      scroll.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 5),
-      scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
-      scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+      bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+      bar.widthAnchor.constraint(equalToConstant: Self.openWidth - 2 * inset),
+      scroll.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 8),
+      scroll.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+      scroll.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
       scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
     setAccessibilityLabel("Page thumbnails")
@@ -109,7 +117,13 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let label = chromeLabel(String(row + 1), size: 11)
     let stack = chromeStack([image, label], spacing: 2, horizontal: false)
     stack.alignment = .centerX
-    return stack
+    let cell = NSTableCellView()
+    cell.addSubview(stack)
+    NSLayoutConstraint.activate([
+      stack.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
+      stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+    ])
+    return cell
   }
   func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
   {

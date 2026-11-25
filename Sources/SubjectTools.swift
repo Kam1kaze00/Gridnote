@@ -1,6 +1,12 @@
 import AppKit
 import WebKit
 
+private final class SubjectWebView: WKWebView {
+  // WebKit registers edits asynchronously. The canvas groups undo only during notebook edits.
+  private let fieldHistory = UndoManager()
+  override var undoManager: UndoManager? { fieldHistory }
+}
+
 final class StudyInsertHandler: NSObject, WKScriptMessageHandler {
   var insert: ((String) -> Void)?
   var resize: ((CGFloat, Bool) -> Void)?
@@ -36,7 +42,7 @@ final class SubjectToolsController: NSViewController {
     config.websiteDataStore = .nonPersistent()
     config.userContentController.add(handler, name: "gridnoteInsert")
     config.userContentController.add(handler, name: "gridnoteSize")
-    let web = WKWebView(frame: .zero, configuration: config)
+    let web = SubjectWebView(frame: .zero, configuration: config)
     view = web
     preferredContentSize = CGSize(width: tool == "Periodic table" ? 646 : 455, height: 245)
     handler.resize = { [weak self] height, periodic in

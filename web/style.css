@@ -707,17 +707,19 @@ footer #selection {
   flex-direction: column;
   background: #222a32;
   border-right: 1px solid #435059;
-  padding: 8px 4px 0;
+  padding: 8px 6px 0;
+  gap: 6px;
 }
 #pages-panel strong {
-  padding: 0 5px;
+  padding: 0;
 }
 .page-actions {
-  display: flex;
-  gap: 1px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
 }
 .page-actions button {
-  flex: 1;
+  min-width: 0;
   padding: 0;
 }
 .page-list {
@@ -778,6 +780,7 @@ body.launching > header,body.launching > nav,body.launching #stage,body.launchin
 #bottom{flex-wrap:wrap;row-gap:1px}
 .footer-pages,.footer-zoom{display:flex;align-items:center;gap:inherit;max-width:100%}
 .footer-zoom{margin-inline-start:auto}
+#clear-page-text { white-space: nowrap; border-color: var(--line); }
 @media(max-width:410px){#bottom{padding-block:2px}.footer-pages,.footer-zoom{column-gap:1px}}
 
 #tools{overflow-x:auto;scrollbar-width:thin}
