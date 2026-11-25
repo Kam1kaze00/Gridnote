@@ -32,14 +32,16 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 
 ## In a lecture
 
-- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. Brush includes Pen, Brush and Fineliner, smoothing and optional pressure response.
-- On a two-button pen, tap the upper switch, erase, then lift to return to Brush. Hold the lower switch and move vertically to scroll.
+- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. **Writer** offers Pen, Brush and Fineliner. Each tip remembers its width. Pen has a subtle change in line weight, Brush has a wider pressure range, and Fineliner keeps a constant width.
+- Tap a text block or table cell with **Selector** to edit it. Drag to move it. **Text** changes its size, color, alignment, bold, italic or underline. In a table, **Tab** and **Shift+Tab** move between cells.
+- Open **Table** and choose columns and rows on the insertion grid, or drag on the paper for a custom footprint. Table options format the whole table. Open **Text** while editing a cell to format just that cell. [See the table picker](docs/images/table-picker.png).
+- On a two-button pen, tap the upper switch, erase, then lift to return to Writer. Hold the lower switch and move vertically to scroll.
 - Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Pasted images keep their source size. Use **Selection → Fit Image to Page** when you want a smaller copy on paper. Drag a corner to see the size in millimetres and guides for matching an adjacent object’s width or height.
 - Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Clear Text** beside the paper control removes typed notes from the current page. Handwriting, images, tables and code stay in place. Undo restores the text.
 - Choose **Solve**, then tap a highlighted problem. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
 - **Preview PDF → Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
 
-![Tablet writing area with contextual highlighter options](docs/images/tablet-writing.png)
+![Tablet notebook with the Writer panel open and Pen selected](docs/images/tablet-writing.png)
 
 ## Appearance
 

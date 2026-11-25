@@ -220,7 +220,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
 
   private func setupToolbar() {
     let brush = ChromeButton(
-      "Brush", symbol: "pencil.tip", shortcut: "Q", target: self, action: #selector(brushTool(_:)))
+      NoteTool.brush.title, symbol: "pencil.tip", shortcut: "Q", target: self,
+      action: #selector(brushTool(_:)))
     let selector = ChromeButton(
       "Selector", symbol: "cursorarrow", shortcut: "W", target: self,
       action: #selector(selectorTool(_:)))
@@ -228,7 +229,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       "Eraser", symbol: "eraser", shortcut: "E", target: self, action: #selector(eraserTool(_:)))
     let text = ChromeButton(
       "Text", symbol: "textformat", shortcut: "R", target: self, action: #selector(textTool(_:)))
-    brush.toolTip = "Brush (Q)"
+    brush.toolTip = "Writer (Q)"
     selector.toolTip =
       "Selector (W). Drag the selected objects or use the corner handles to resize."
     eraser.toolTip =
@@ -852,6 +853,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     guard sender != nil, let button = toolButtons[tool] else { return }
     settingsPopover?.performClose(nil)
     let panel = ToolOptionsController(tool: tool, canvas: canvas)
+    panel.didInsert = { [weak self] in self?.settingsPopover?.performClose(nil) }
     panel.didRestore = { [weak self, weak button] in self?.activate(tool, sender: button) }
     _ = panel.view
     let popover = NSPopover()
@@ -901,7 +903,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       let appearance = preferences.toolAppearance(tool)
       button.inkIcon = preferences.illustration(tool)
       if button.symbol != appearance.symbol { button.symbol = appearance.symbol }
-      let family = tool == .marker ? "Highlighter" : tool.rawValue.capitalized
+      let family = tool.title
       let detail = tool == .marker ? markerColors[preferences.markerIndex].0 : appearance.name
       let label = family == detail ? family : family + " · " + detail
       button.toolTip = label + (button.shortcut.map { " (" + $0 + ")" } ?? "")
@@ -913,10 +915,10 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     selectionActions.caption = "\(canvas.selectionCount) selected"
     let compact = (window?.frame.width ?? 1000) < 900
     for (tool, b) in toolButtons where [.brush, .selector, .eraser, .text].contains(tool) {
-      let name = compact ? "" : tool.rawValue.capitalized
+      let name = compact ? "" : tool.title
       if b.caption != name {
         b.caption = name
-        b.setAccessibilityLabel(b.toolTip ?? tool.rawValue.capitalized)
+        b.setAccessibilityLabel(b.toolTip ?? tool.title)
       }
     }
     palette.isHidden = !preferences.paletteVisible
@@ -931,7 +933,9 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
         index
         == (marker
           ? preferences.markerIndex
-          : canvas.effectiveTool == .text ? preferences.textColor : preferences.colorIndex)
+          : canvas.effectiveTool == .text
+            ? InkColor.colors.firstIndex(where: { $0.1 == canvas.currentFormat(table: false).color }
+            ) : preferences.colorIndex)
     }
     zoomLabel.stringValue = "\(Int((zoom * 100).rounded()))%"
     minZoomButton.isEnabled = zoom > 1.001
@@ -980,7 +984,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
 
   @objc private func pickColor(_ sender: NSButton) {
     if canvas.effectiveTool == .text {
-      preferences.textColor = sender.tag
+      if canvas.editor != nil { canvas.chooseTool(.text) }
+      canvas.changeFormat(table: false) { $0.color = InkColor.colors[sender.tag].1 }
       canvas.refreshTool()
     } else if canvas.effectiveTool == .marker {
       preferences.markerIndex = sender.tag

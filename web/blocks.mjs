@@ -1,4 +1,4 @@
-import { clamp, dist, makeInk, rect } from "./engine.mjs";
+import { clamp, dist, makeInk, rect, rgb } from "./engine.mjs";
 export const markerNames = ["Yellow", "Mint", "Sky", "Coral", "Lilac"];
 export const markers = [
   [1, 0.83, 0.08],
@@ -10,7 +10,12 @@ export const markers = [
 export function tableGrid(rows, columns, header, old) {
   rows = clamp(Math.round(rows) || 3, 1, 40);
   columns = clamp(Math.round(columns) || 3, 1, 16);
+  const formats = Object.fromEntries(Object.entries(old?.formats || {}).filter(([key]) => {
+    const [r,c] = key.split(":").map(Number);
+    return r < rows && c < columns;
+  }));
   return {
+    ...(Object.keys(formats).length ? {formats} : {}),
     rows,
     columns,
     header,
@@ -153,12 +158,12 @@ export function resizeGuides(box, targets, tolerance, fixed) {
 }
 const lex =
   /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|^\s*#(?!include|define|import)[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b(?:if|else|for|while|return|break|continue|def|class|import|from|in|as|let|var|const|func|function|int|float|double|char|void|struct|bool|true|false|True|False|None|null|using|public|private|static|new|switch|case|end|include|define|printf|print|fn|mut|impl|trait|enum|match|package|interface|extends|async|await|yield|with|lambda|try|except|catch|throw|throws|finally|namespace|using|override|protected|final|val|fun|type|interface|SELECT|FROM|WHERE|JOIN|GROUP|ORDER|BY|INSERT|UPDATE|AND|OR|NULL|nil)\b)|(\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b)/gm;
-export function codeTokens(value, highlight) {
-  if (!highlight) return [[value, "#20272b"]];
+export function codeTokens(value, highlight, ink = "#20272b") {
+  if (!highlight) return [[value, ink]];
   let from = 0,
     tokens = [];
   for (const m of value.matchAll(lex)) {
-    if (m.index > from) tokens.push([value.slice(from, m.index), "#20272b"]);
+    if (m.index > from) tokens.push([value.slice(from, m.index), ink]);
     tokens.push([
       m[0],
       ["#526b5f", "#9c3929", "#5945a5", "#155f8e"][
@@ -167,7 +172,7 @@ export function codeTokens(value, highlight) {
     ]);
     from = m.index + m[0].length;
   }
-  tokens.push([value.slice(from), "#20272b"]);
+  tokens.push([value.slice(from), ink]);
   return tokens;
 }
 export function recognizeCode(text) {
@@ -179,6 +184,74 @@ export function recognizeCode(text) {
       text,
     ),
   ];
+}
+export function textLines(ctx, value, width) {
+  const lines = [];
+  for (const paragraph of value.split("\n")) {
+    let line = "";
+    for (const word of paragraph.match(/\S+\s*|\s+/gu) || []) {
+      if (line && ctx.measureText(line + word).width > width) {
+        lines.push(line.trimEnd());
+        line = "";
+      }
+      if (ctx.measureText(word).width > width) {
+        for (const ch of word) {
+          if (line && ctx.measureText(line + ch).width > width) {
+            lines.push(line);
+            line = "";
+          }
+          line += ch;
+        }
+      } else line += word;
+    }
+    lines.push(line.trimEnd());
+  }
+  return lines;
+}
+export const cellKey = (table, i) =>
+  Math.floor(i / table.columns) + ":" + (i % table.columns);
+export function textFormat(o, cell) {
+  return (
+    (cell != null && o.table?.formats?.[cellKey(o.table, cell)]) || {
+      size: o.content.text._2,
+      color: o.content.text._1,
+      alignment: o.alignment || "Auto",
+      traits: o.textTraits || 0,
+    }
+  );
+}
+export function fontFor(style, header = false) {
+  return (
+    (style.traits & 2 ? "italic " : "") +
+    (style.traits & 1 ? "bold " : header ? "600 " : "") +
+    style.size +
+    "px -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+  );
+}
+export function paintText(ctx, value, style, x, y, width, header = false) {
+  ctx.font = fontFor(style, header);
+  ctx.fillStyle = rgb(style.color);
+  ctx.textBaseline = "top";
+  for (const [i, line] of textLines(ctx, value, width).entries()) {
+    const rtl = /^[^a-zA-Z\u0590-\u08ff]*[\u0590-\u08ff]/.test(line);
+    ctx.direction = rtl ? "rtl" : "ltr";
+    const right =
+      style.alignment === "Right" || (style.alignment === "Auto" && rtl);
+    const center = style.alignment === "Center";
+    ctx.textAlign = right ? "right" : center ? "center" : "left";
+    const left = x + (right ? width : center ? width / 2 : 0);
+    const top = y + style.size * (0.12 + i * 1.2);
+    ctx.fillText(line, left, top);
+    if (style.traits & 4) {
+      const length = ctx.measureText(line).width;
+      ctx.fillRect(
+        left - (right ? length : center ? length / 2 : 0),
+        top + style.size,
+        length,
+        Math.max(0.6, style.size / 16),
+      );
+    }
+  }
 }
 export function paintBlock(ctx, o) {
   const [origin, [w, h]] = o.layoutFrame || o.frame,
@@ -202,53 +275,75 @@ export function paintBlock(ctx, o) {
       ctx.lineWidth = 0.55;
       ctx.strokeStyle = "#6b8287";
       ctx.strokeRect(cx, cy, cw, ch);
-      const pt = Math.min(size, ch * 0.64);
-      ctx.font = (header ? "600 " : "") + pt + "px Arial, sans-serif";
-      ctx.fillStyle = "#20272b";
+      const format = textFormat(o, i);
       ctx.save();
       ctx.beginPath();
       ctx.rect(cx + 2, cy + 1, Math.max(0, cw - 4), Math.max(0, ch - 2));
       ctx.clip();
-      let line = 0,
-        pos = 0;
-      for (const ch of value) {
-        const d = ctx.measureText(ch).width;
-        if (ch === "\n" || (pos && pos + d > cw - 6)) {
-          line++;
-          pos = 0;
-          if (ch === "\n") continue;
-        }
-        ctx.fillText(ch, cx + 3 + pos, cy + 2 + line * pt * 1.2);
-        pos += d;
-      }
+      paintText(
+        ctx,
+        value,
+        { ...format, size: Math.min(format.size, ch * 0.64) },
+        cx + 3,
+        cy + 2,
+        Math.max(1, cw - 6),
+        header,
+      );
       ctx.restore();
     });
   } else {
     ctx.fillStyle = "#f6f6f6";
     ctx.fillRect(x, y, w, h);
-    ctx.font = size + "px ui-monospace, Menlo, Consolas, monospace";
+    const format = textFormat(o);
+    ctx.font =
+      (format.traits & 2 ? "italic " : "") +
+      (format.traits & 1 ? "bold " : "") +
+      size +
+      "px ui-monospace, Menlo, Consolas, monospace";
     const cw = ctx.measureText("M").width;
-    let col = 0,
-      row = 0;
-    for (const [token, color] of codeTokens(o.content.text._0, o.codeStyle)) {
-      ctx.fillStyle = color;
+    const width = Math.max(1, Math.floor((w - 10) / cw));
+    const lines = [[]];
+    let line = lines[0];
+    for (const [token, color] of codeTokens(
+      o.content.text._0,
+      o.codeStyle,
+      rgb(format.color),
+    )) {
       for (const ch of token) {
-        if (ch === "\n") {
-          row++;
-          col = 0;
-          continue;
+        if (ch === "\n" || line.length >= width) {
+          line = [];
+          lines.push(line);
         }
-        if (col > 0 && (col + 1) * cw > w - 10) {
-          col = 0;
-          row++;
-        }
-        if (ch === "\t") col += 4 - (col % 4);
-        else {
-          ctx.fillText(ch, x + 5 + col * cw, y + 3 + row * size * 1.22);
-          col++;
-        }
+        if (ch === "\n") continue;
+        if (ch === "\t") {
+          const n = 4 - (line.length % 4);
+          for (let i = 0; i < n; i++) line.push([" ", color]);
+        } else line.push([ch, color]);
       }
     }
+    lines.forEach((chars, row) => {
+      const remaining = Math.max(0, w - 10 - chars.length * cw);
+      const start =
+        x +
+        5 +
+        (format.alignment === "Right"
+          ? remaining
+          : format.alignment === "Center"
+            ? remaining / 2
+            : 0);
+      const top = y + 3 + row * size * 1.22;
+      chars.forEach(([ch, color], col) => {
+        ctx.fillStyle = color;
+        ctx.fillText(ch, start + col * cw, top);
+        if (format.traits & 4)
+          ctx.fillRect(
+            start + col * cw,
+            top + size,
+            cw,
+            Math.max(0.6, size / 16),
+          );
+      });
+    });
   }
   ctx.restore();
 }

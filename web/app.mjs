@@ -7,6 +7,7 @@ import {
   markers,
   markerNames,
   tableGrid,
+  textFormat, cellKey, fontFor, textLines,
   cellFrame,
   shapeObject,
   align,
@@ -94,7 +95,7 @@ const view = $("view"),
   pop = $("popover"),
   ctx = sheet.getContext("2d");
 const toolNames = {
-  brush: ["Brush", "Q"],
+  brush: ["Writer", "Q"],
   selector: ["Selector", "W"],
   eraser: ["Eraser", "E"],
   text: ["Text", "R"],
@@ -115,6 +116,7 @@ let book,
   space = false,
   lower = false,
   upper = false;
+let formatCell = null;
 let editing = null,
   undo = [],
   redo = [],
@@ -544,6 +546,7 @@ function refresh() {
   $("zoomin").disabled = zoom >= 3.999;
   $("inks").hidden = !prefs.palette;
   $("palette").setAttribute("aria-pressed", String(prefs.palette));
+  const textInk = tool === "text" ? inks.findIndex(c => rgb(c) === rgb(currentFormat(false).color)) : prefs.textInk;
   for (const [i, b] of [...$("inks").children].entries()) {
     const marker = tool === "marker";
     b.style.setProperty("--swatch", rgb((marker ? markers : inks)[i]));
@@ -556,7 +559,7 @@ function refresh() {
           (marker
             ? prefs.markerInk
             : tool === "text"
-              ? prefs.textInk
+              ? textInk
               : prefs.ink),
       ),
     );
@@ -793,7 +796,7 @@ function paint() {
     ctx.restore();
   }
   const code =
-      selection.size === 1 && tool === "selector" ? selected()[0] : null,
+      tool === "selector" ? editing?.object || (selection.size === 1 ? selected()[0] : null) : null,
     cb = $("code-toggle");
   cb.hidden = code?.codeStyle == null;
   if (!cb.hidden) {
@@ -851,7 +854,11 @@ function pickTool(id) {
   studySequence++;
   $("solve").disabled = false;
   $("solve").textContent = "Solve";
+  const idToFormat = editing?.object.id;
+  const cell = editing?.cell;
   finishText();
+  if (id === "text" && idToFormat && book.objects.some(o => o.id === idToFormat)) selection = new Set([idToFormat]);
+  formatCell = id === "text" && cell != null ? {id:idToFormat, cell} : null;
   finishGesture();
   armed = false;
   tool = id;
@@ -870,15 +877,21 @@ function append(e, p, isUp = false) {
   const g = gesture,
     last = g.raw.at(-1);
   let radius = isUp && last ? last.radius : scaledPressure(e, g.prefs);
-  if (!isUp && last && e.pointerType === "pen")
-    radius = radius * 0.68 + last.radius * 0.32;
+  if (!isUp && last && e.pointerType === "pen") {
+    const dt = Math.max(0.001, e.timeStamp * 0.001 - g.times.at(-1));
+    radius += (last.radius - radius) * Math.exp(-dt / 0.005);
+  }
   if (g.marker) radius = g.prefs.markerWidth / 2;
   p = [
     clamp(p[0], radius, W - radius),
     clamp(p[1], radius, pages * H - radius),
   ];
   if (last && dist(last.position, p) < 0.12) {
-    if (g.raw.length === 1) last.radius = Math.max(last.radius, radius);
+    if (!isUp && Math.abs(radius - last.radius) > 0.005) {
+      last.radius = g.raw.length === 1 ? Math.max(last.radius, radius) : radius;
+      g.times[g.times.length - 1] = e.timeStamp * 0.001;
+      liveInk = null;
+    }
     return;
   }
   g.raw.push({ position: p, radius });
@@ -898,7 +911,7 @@ function currentInk() {
     );
     if (gesture.marker) {
       liveInk.instrument = "marker";
-      liveInk.opacity = settings().opacity;
+      liveInk.opacity = gesture.prefs.opacity;
     }
   }
   return liveInk;
@@ -1015,7 +1028,9 @@ function begin(p, e) {
         return;
       }
       if (contains(box, p, pad)) {
-        gesture = { type: "move", start: p, box, before: book.objects };
+        const target = selected()[0];
+        gesture = { type: "move", start: p, box, before: book.objects,
+          edit: selection.size === 1 && kind(target) === "text" && contains(target.frame, p) ? target : null };
         draw();
         return;
       }
@@ -1030,6 +1045,7 @@ function begin(p, e) {
         gesture = {
           type: "move",
           start: p,
+          edit: kind(hitObject) === "text" ? hitObject : null,
           box: hitObject.frame,
           before: book.objects,
         };
@@ -1043,6 +1059,7 @@ function begin(p, e) {
       mode: shape,
       start: p,
       points: [p],
+      additive: e.shiftKey,
       previous: e.shiftKey ? new Set(selection) : new Set(),
     };
   }
@@ -1068,12 +1085,7 @@ function move(p, e) {
           : rect(g.start, p);
     f[1] = [clamp(f[1][0], 36, W), clamp(f[1][1], 18, H)];
     f[0][0] = clamp(f[0][0], 0, W - f[1][0]);
-    g.preview = {
-      id: (g.id ??= uid()),
-      frame: f,
-      table: tableGrid(s.rows, s.columns, s.header),
-      content: { text: { _0: "", _1: inks[0], _2: 11 } },
-    };
+    g.preview = newTable(f, s.rows, s.columns, g.id ??= uid());
   }
   if (g.type === "ink") append(e, p);
   if (g.type === "erase") erase(p);
@@ -1082,6 +1094,10 @@ function move(p, e) {
     else if (dist(g.points.at(-1), p) > 1 / scale) g.points.push(p);
   }
   if (g.type === "move" || g.type === "resize") {
+    if (g.edit) {
+      if (dist(g.start, p) * scale <= 4) return;
+      g.edit = null;
+    }
     const [[x, y], [w, h]] = g.box;
     let dx = 0,
       dy = 0,
@@ -1210,9 +1226,23 @@ function move(p, e) {
   }
   draw();
 }
+function editTappedObject(object, point) {
+  if (object.table) {
+    const i = object.table.cells.findIndex((_, i) =>
+      contains(cellFrame(object, i), point),
+    );
+    if (i >= 0) startCell(object, i);
+  } else startText(point, object);
+  if (editing) placeCaretAtTap(point);
+}
 function finishGesture(p) {
   const g = gesture;
   if (!g) return;
+  if (p && g.edit && dist(g.start, p) * scale <= 4) {
+    gesture = null;
+    editTappedObject(g.edit, p);
+    return;
+  }
   let next, before;
   if (g.type === "ink" && g.raw.length) {
     next = [...book.objects, currentInk()];
@@ -1235,6 +1265,11 @@ function finishGesture(p) {
           .filter((o) => eligible(o) && hit(o, end, 4 / scale))
           .slice(0, 1)
       : book.objects.filter((o) => eligible(o) && regionHit(o, poly));
+    if (p && isTap && !g.erase && !g.additive && hits.length === 1 && kind(hits[0]) === "text") {
+      gesture = null;
+      editTappedObject(hits[0], p);
+      return;
+    }
     if (g.erase) {
       const ids = new Set(hits.map((o) => o.id));
       if (ids.size) next = book.objects.filter((o) => !ids.has(o.id));
@@ -1255,7 +1290,7 @@ function finishGesture(p) {
     setObjects(
       next,
       g.type === "ink"
-        ? "Brush stroke"
+        ? (g.marker ? "Highlight" : "Handwriting")
         : g.type === "region" || g.type === "erase"
           ? "Erase"
           : "Transform",
@@ -1350,11 +1385,17 @@ function touchBegin(e) {
   if (penContact !== null) return true;
   touches.set(e.pointerId, [e.clientX, e.clientY]);
   capture(e.pointerId);
-  if (touches.size >= 2 || !fingerWrites()) {
-    if (gesture?.type === "ink") {
+  const p = point(e);
+  const selectTouch = effective() === "selector" && (settings().select !== "Tap" ||
+    (selection.size && contains(groupRect(selected()), p, 12 / scale)) ||
+    book.objects.some(o => inFilter(o) && hit(o, p, 3.5 / scale)));
+  if (touches.size >= 2 || (!fingerWrites() && !selectTouch)) {
+    if (gesture) {
+      if (gesture.before && gesture.changed) book = {...book, objects:gesture.before};
       gesture = null;
       liveInk = null;
       touchSave();
+      draw();
     }
     const m = touchMetrics(),
       r = view.getBoundingClientRect();
@@ -1390,6 +1431,15 @@ function touchMove(e) {
   refresh();
   return true;
 }
+document.addEventListener("pointerover", (e) => {
+  if (e.pointerType !== "pen") return;
+  const previous = device;
+  observePointer(e);
+  if (book && previous !== device) {
+    refresh();
+    if (popupKind === "tool" && popupAnchor) toolOptions(popupAnchor, tool);
+  }
+});
 sheet.onpointerdown = (e) => {
   if (!book) return;
   observePointer(e);
@@ -1475,8 +1525,7 @@ sheet.onpointerup = (e) => {
         tap &&
         (studyItems.some((i) => contains(i.frame, p, 2 / scale)) ||
           ["text", "selector"].includes(effective()) ||
-          (effective() === "table" &&
-            book.objects.some((o) => o.table && contains(o.frame, p))))
+          effective() === "table")
       ) {
         begin(p, e);
         finishGesture(p);
@@ -1584,6 +1633,7 @@ function textObject(base, value, p, size, c) {
     codeStyle: style,
     id: base?.id || uid(),
     alignment: base?.alignment || settings().alignment,
+    textTraits: base ? base.textTraits : settings().textTraits,
     frame: [p, [width, measured]],
     content: { text: { _0: value, _1: c, _2: size } },
   };
@@ -1597,7 +1647,10 @@ function placeEditor() {
     top: y * scale + "px",
     width: w * scale + "px",
     fontFamily:
-      o.codeStyle != null ? "ui-monospace, Menlo, monospace" : "inherit",
+      o.codeStyle != null ? "ui-monospace, Menlo, monospace" : "-apple-system, BlinkMacSystemFont, Arial, sans-serif",
+    fontWeight: o.textTraits & 1 ? "bold" : editing.parent?.table.header && editing.cell < editing.parent.table.columns ? "600" : "normal",
+    fontStyle: o.textTraits & 2 ? "italic" : "normal",
+    textDecoration: o.textTraits & 4 ? "underline" : "none",
     fontSize: o.content.text._2 * scale + "px",
     color: rgb(o.content.text._1),
     textAlign:
@@ -1617,7 +1670,7 @@ function startText(p, old, caret, length = 0) {
     o = old || textObject(null, "", at, prefs.textSize, inks[prefs.textInk]);
   if (!old && prefs.code) o.codeStyle = true;
   editing = { object: o, existing: !!old };
-  selection.clear();
+  selection = old && tool === "selector" ? new Set([old.id]) : new Set();
   editor.value = o.content.text._0;
   editor.hidden = false;
   editor.dir = "auto";
@@ -1630,16 +1683,62 @@ function startText(p, old, caret, length = 0) {
   recordView();
   draw();
 }
+// Hit-test the browser's own wrapped and bidi text layout at the original tap.
+function placeCaretAtTap(p) {
+  if (!editor.value) return;
+  const rect = editor.getBoundingClientRect(),
+    style = getComputedStyle(editor);
+  const mirror = document.createElement("div");
+  Object.assign(mirror.style, {
+    position: "fixed",
+    left: rect.left + "px",
+    top: rect.top + "px",
+    width: rect.width + "px",
+    height: rect.height + "px",
+    zIndex: "99",
+    overflow: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+    font: style.font,
+    lineHeight: style.lineHeight,
+    textAlign: style.textAlign,
+    direction: style.direction,
+    tabSize: style.tabSize,
+  });
+  mirror.textContent = editor.value;
+  document.body.append(mirror);
+  try {
+    const [x, y] = editing.object.frame[0];
+    const clientX = rect.left + (p[0] - x) * scale,
+      clientY = rect.top + (p[1] - y) * scale;
+    const caret = document.caretPositionFromPoint?.(clientX, clientY);
+    const range = caret
+      ? null
+      : document.caretRangeFromPoint?.(clientX, clientY);
+    const node = caret?.offsetNode ?? range?.startContainer;
+    const offset = caret?.offset ?? range?.startOffset;
+    if (node === mirror.firstChild) editor.setSelectionRange(offset, offset);
+  } finally {
+    mirror.remove();
+  }
+}
 function startCell(o, i, caret, length = 0) {
   const frame = cellFrame(o, i),
+    style = textFormat(o, i),
     proxy = {
       id: o.id,
-      frame,
+      frame: [
+        [frame[0][0] + 3, frame[0][1] + 2],
+        [Math.max(1, frame[1][0] - 6), Math.max(1, frame[1][1] - 4)],
+      ],
+      alignment: style.alignment,
+      textTraits: style.traits,
       content: {
         text: {
           ...o.content.text,
           _0: o.table.cells[i],
-          _2: Math.min(o.content.text._2, frame[1][1] * 0.64),
+          _1: style.color,
+          _2: Math.min(style.size, frame[1][1] * 0.64),
         },
       },
     };
@@ -1902,19 +2001,19 @@ function choices(label, items, value, select) {
   });
   pop.append(row);
 }
-function slider(label, key, min, max, step, format) {
+function slider(label, key, min, max, step, format, initial = settings()[key], change = v => setting(key, v)) {
   const row = $el("label");
   row.className = "field";
-  const output = $el("output", format(settings()[key])),
+  const output = $el("output", format(initial)),
     input = $el("input");
   input.type = "range";
   input.min = min;
   input.max = max;
   input.step = step;
-  input.value = settings()[key];
+  input.value = initial;
   input.setAttribute("aria-label", label);
   input.oninput = () => {
-    setting(key, Number(input.value));
+    change(Number(input.value));
     output.textContent = format(Number(input.value));
     draw();
   };
@@ -1942,17 +2041,21 @@ function swatches(container, values, current, onClick, names) {
   }
   container.append(row);
 }
-function penColors() {
+function penColors(onChange) {
   const prefs = settings(),
     marker = tool === "marker",
     key = marker ? "markerInk" : tool === "text" ? "textInk" : "ink";
   swatches(
     pop,
     (marker ? markers : inks).map(rgb),
-    prefs[key],
+    key === "textInk" ? inks.findIndex(c => rgb(c) === rgb(currentFormat(false).color)) : prefs[key],
     (i) => {
-      setting(key, i);
+      if (key === "textInk") {
+        if (editing) pickTool("text");
+        changeFormat(false, "color", inks[i]);
+      } else setting(key, i);
       refresh();
+      onChange?.();
     },
     marker ? markerNames : inkNames,
   );
@@ -1966,6 +2069,233 @@ function checkOption(label, checked, change) {
   l.append(c, document.createTextNode(label));
   pop.append(l);
   return c;
+}
+function defaultFormat(table) {
+  const p = settings();
+  if (table)
+    return (
+      p.tableText || { size: 11, color: inks[0], alignment: "Auto", traits: 0 }
+    );
+  return {
+    size: p.textSize,
+    color: inks[p.textInk],
+    alignment: p.alignment,
+    traits: p.textTraits,
+  };
+}
+function newTable(
+  frame,
+  rows,
+  columns,
+  id = uid(),
+  header = settings().header,
+) {
+  const f = defaultFormat(true);
+  return {
+    id,
+    frame,
+    alignment: f.alignment,
+    textTraits: f.traits,
+    table: tableGrid(rows, columns, header),
+    content: { text: { _0: "", _1: f.color, _2: f.size } },
+  };
+}
+function formatTarget(table) {
+  const o = selection.size === 1 ? selected()[0] : null;
+  if (!o?.content.text) return null;
+  if (table) return o.table ? o : null;
+  return !o.table || formatCell?.id === o.id ? o : null;
+}
+function currentFormat(table) {
+  if (!table && editing) return textFormat(editing.object);
+  const o = formatTarget(table);
+  return o
+    ? textFormat(o, !table && o.table ? formatCell.cell : null)
+    : defaultFormat(table);
+}
+function changeFormat(table, key, value) {
+  const o = formatTarget(table);
+  if (!o) {
+    if (table) setting("tableText", { ...defaultFormat(true), [key]: value });
+    else if (key === "color")
+      setting(
+        "textInk",
+        inks.findIndex((c) => rgb(c) === rgb(value)),
+      );
+    else
+      setting(
+        { size: "textSize", alignment: "alignment", traits: "textTraits" }[key],
+        value,
+      );
+    return;
+  }
+  const f = { ...currentFormat(table), [key]: value };
+  let next = { ...o };
+  if (!table && o.table) {
+    next.table = {
+      ...o.table,
+      formats: { ...o.table.formats, [cellKey(o.table, formatCell.cell)]: f },
+    };
+  } else {
+    next.content = { text: { ...o.content.text, _1: f.color, _2: f.size } };
+    next.alignment = f.alignment;
+    next.textTraits = f.traits;
+    if (o.table?.formats)
+      next.table = {
+        ...o.table,
+        formats: Object.fromEntries(
+          Object.entries(o.table.formats).map(([k, v]) => [
+            k,
+            { ...v, [key]: value },
+          ]),
+        ),
+      };
+    if (!o.table && !o.layoutFrame) {
+      const ctx = sheet.getContext("2d");
+      ctx.save();
+      ctx.font = fontFor(f);
+      const lines = textLines(ctx, o.content.text._0, o.frame[1][0]);
+      ctx.restore();
+      next.frame = [
+        o.frame[0],
+        [o.frame[1][0], Math.max(24, lines.length * f.size * 1.2 + 8)],
+      ];
+      if (o.codeStyle != null)
+        next = textObject(next, o.content.text._0, o.frame[0], f.size, f.color);
+    }
+  }
+  setObjects(
+    book.objects.map((item) => (item.id === o.id ? next : item)),
+    "Format text",
+  );
+}
+function formatOptions(table) {
+  const f = currentFormat(table),
+    row = $el("div");
+  row.className = "type-controls";
+  const label = $el(
+    "small",
+    table
+      ? "Table text"
+      : formatTarget(false)?.table
+        ? "Cell text"
+        : "Text style",
+  );
+  row.append(label);
+  const ink = $el("select");
+  ink.setAttribute("aria-label", "Text color");
+  inkNames.forEach((name, i) => ink.add(new Option(name, i)));
+  ink.value = inks.findIndex((c) => rgb(c) === rgb(f.color));
+  ink.onchange = () => {
+    changeFormat(table, "color", inks[Number(ink.value)]);
+    refresh();
+  };
+  row.append(ink);
+  if (table) {
+    const sizes = $el("select");
+    sizes.setAttribute("aria-label", "Table type size");
+    for (const pt of [
+      ...new Set([8, 10, 11, 12, 14, 16, 18, 24, 30, 36, f.size]),
+    ].sort((a, b) => a - b))
+      sizes.add(new Option(pt + " pt", pt));
+    sizes.value = f.size;
+    sizes.onchange = () => changeFormat(true, "size", Number(sizes.value));
+    row.append(sizes);
+  }
+  pop.append(row);
+  const emphasis = $el("div");
+  emphasis.className = "choices";
+  for (const [i, label] of ["Bold", "Italic", "Underline"].entries()) {
+    const mask = 1 << i,
+      b = button(label[0], () => {
+        const traits = currentFormat(table).traits ^ mask;
+        changeFormat(table, "traits", traits);
+        b.setAttribute("aria-pressed", String(Boolean(traits & mask)));
+      });
+    b.setAttribute("aria-label", label);
+    b.title = label;
+    b.setAttribute("aria-pressed", String(Boolean(f.traits & mask)));
+    emphasis.append(b);
+  }
+  pop.append(emphasis);
+  choices(
+    "Alignment",
+    ["Auto", "Left", "Center", "Right"],
+    f.alignment,
+    (value) => changeFormat(table, "alignment", value),
+  );
+  if (!table)
+    slider(
+      "Type size",
+      "textSize",
+      8,
+      36,
+      1,
+      (n) => n + " pt",
+      f.size,
+      (n) => changeFormat(false, "size", n),
+    );
+}
+function tablePicker() {
+  const grid = $el("div"),
+    label = $el("small", "Insert by grid");
+  grid.className = "insert-grid";
+  grid.setAttribute("role", "group");
+  grid.setAttribute("aria-label", "Insert table by grid");
+  const cols = 8,
+    rows = 5;
+  const highlight = (x, y) => {
+    label.textContent = x + " columns × " + y + " rows";
+    [...grid.children].forEach((b, i) => {
+      b.tabIndex = i === (y - 1) * cols + x - 1 ? 0 : -1;
+      b.classList.toggle("lit", i % cols < x && Math.floor(i / cols) < y);
+    });
+  };
+  for (let y = 1; y <= rows; y++)
+    for (let x = 1; x <= cols; x++) {
+      const b = button("", () => {
+        setting("rows", y);
+        setting("columns", x);
+        const size = [Math.min(W - 8, x * 72), y * 28],
+          origin = insertion();
+        origin[0] = Math.min(origin[0], W - size[0]);
+        closePop();
+        replaceObjects(
+          [
+            newTable(
+              [origin, size],
+              y,
+              x,
+              uid(),
+              formatTarget(true)?.table.header ?? settings().header,
+            ),
+          ],
+          "Insert table",
+        );
+      });
+      b.setAttribute(
+        "aria-label",
+        "Insert " + x + " columns by " + y + " rows",
+      );
+      b.tabIndex = x === 1 && y === 1 ? 0 : -1;
+      b.onpointerenter = b.onfocus = () => highlight(x, y);
+      b.onkeydown = (e) => {
+        const d = {
+          ArrowLeft: [-1, 0],
+          ArrowRight: [1, 0],
+          ArrowUp: [0, -1],
+          ArrowDown: [0, 1],
+        }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        e.stopPropagation();
+        grid.children[
+          (clamp(y + d[1], 1, rows) - 1) * cols + clamp(x + d[0], 1, cols) - 1
+        ].focus();
+      };
+      grid.append(b);
+    }
+  pop.append(label, grid);
 }
 function tableOptions() {
   const o = selection.size === 1 ? selected()[0] : null,
@@ -2024,10 +2354,12 @@ function tableOptions() {
     row.append(l);
   }
   checkOption("Header row", values.header, (v) => change("header", v));
+  formatOptions(true);
 }
 function toolOptions(anchor, id) {
   openPop(anchor, "tool", toolNames[id][0], () => {
     const p = settings();
+    let redrawSample;
     if (id === "brush") {
       const sample = $el("canvas");
       sample.width = 480;
@@ -2041,20 +2373,20 @@ function toolOptions(anchor, id) {
         ctx.fillStyle = "#f8f7f1";
         ctx.fillRect(0, 0, sample.width, sample.height);
         ctx.fillStyle = rgb(inks[s.ink]);
-        for (let x = 10; x < 470; x += 0.5) {
-          const t = (x - 10) / 460,
-            force = 0.1 + 0.9 * Math.sin(Math.PI * t);
-          ctx.beginPath();
-          ctx.arc(
-            x,
-            27 + 10 * Math.sin(t * Math.PI * 3),
-            s.width * (devices[device][1] ? pressureResponse(s, force) : 1),
-            0,
-            2 * Math.PI,
-          );
-          ctx.fill();
+        const points = [];
+        for (let i = 0; i <= 70; i++) {
+          const t = i / 70;
+          const force = 0.1 + 0.9 * Math.sin(Math.PI * t);
+          const y = 13.5 + 5 * Math.sin(t * Math.PI * 3) + 0.5 * Math.sin(t * 41);
+          points.push({ position: [6 + t * 228, y],
+            radius: s.width * 0.5 * (devices[device][1] ? pressureResponse(s, force) : 1) });
         }
+        ctx.save();
+        ctx.scale(2, 2);
+        ctx.fill(new Path2D(inkPath(makeInk(smooth(points, s.smoothing), inks[s.ink]))));
+        ctx.restore();
       }
+      redrawSample = showSample;
       showSample();
       pop.oninput = () => queueMicrotask(showSample);
       choices("Writing tip", ["Pen", "Brush", "Fineliner"], p.nib, (v) => {
@@ -2087,7 +2419,7 @@ function toolOptions(anchor, id) {
           0.5,
           2,
           0.01,
-          (x) => x.toFixed(2) + "×",
+          (x) => (x === 1 ? "Linear" : x < 1 ? "Soft" : "Firm") + " · " + x.toFixed(2),
         );
     }
     if (id === "marker") {
@@ -2117,7 +2449,7 @@ function toolOptions(anchor, id) {
         (x) => x.toFixed(1) + " pt",
       );
     }
-    if (id === "table") tableOptions();
+    if (id === "table") { tablePicker(); tableOptions(); }
     if (id === "selector") {
       if (selection.size === 1 && selected()[0]?.table) tableOptions();
       checkOption("Alignment guides", p.guides, (v) => setting("guides", v));
@@ -2155,25 +2487,23 @@ function toolOptions(anchor, id) {
         "Eraser mode",
         ["Regular", "Stroke", "Rectangle", "Lasso"],
         p.erase,
-        (x) => setting("erase", x),
+        (x) => {
+          setting("erase", x);
+          toolOptions(anchor, id);
+        },
       );
-      slider("Contact diameter", "diameter", 6, 36, 1, (x) => x + " pt");
+      if (p.erase === "Regular" || p.erase === "Stroke")
+        slider("Contact diameter", "diameter", 6, 36, 1, (x) => x + " pt");
     }
     if (id === "text") {
       checkOption("Insert code block", p.code, (v) => setting("code", v));
-      slider("Type size", "textSize", 8, 36, 1, (x) => x + " pt");
-      choices(
-        "Alignment",
-        ["Auto", "Left", "Center", "Right"],
-        p.alignment,
-        (x) => setting("alignment", x),
-      );
+      formatOptions(false);
     }
     if (
-      ["brush", "text", "marker", "shapes"].includes(id) &&
+      ["brush", "marker", "shapes"].includes(id) &&
       ($("inks").hidden || getComputedStyle($("inks")).display === "none")
     )
-      penColors();
+      penColors(redrawSample);
     menuAction("Restore tool defaults", () => {
       restore(id);
       refresh();
@@ -2703,10 +3033,19 @@ async function updatePreview() {
 document.addEventListener("keydown", (e) => {
   if (document.body.classList.contains("launching")) return;
   const mod = e.metaKey || e.ctrlKey;
+  if (e.key === "Escape" && !pop.hidden) {
+    e.preventDefault();
+    closePop();
+    sheet.focus({ preventScroll:true });
+    return;
+  }
   if (isEntry(e.target)) {
-    if (e.key === "Escape" && pop.contains(e.target)) {
-      closePop();
-      sheet.focus({ preventScroll: true });
+    if (e.target === editor && editing?.parent && e.key === "Tab" && !mod && !e.altKey) {
+      e.preventDefault();
+      const id = editing.parent.id, index = editing.cell + (e.shiftKey ? -1 : 1);
+      finishText();
+      const o = book.objects.find(x => x.id === id);
+      if (o && index >= 0 && index < o.table.cells.length) startCell(o, index);
       return;
     }
     if (
@@ -2817,19 +3156,11 @@ function clearNotebook(typedOnly, page = null) {
   selection.clear();
   refresh();
 }
-sheet.ondblclick = (e) => {
-  if (tool !== "selector") return;
-  const p = point(e),
-    o = [...book.objects]
-      .reverse()
-      .find((o) => kind(o) === "text" && contains(o.frame, p));
-  if (o?.table) {
-    const i = o.table.cells.findIndex((_, i) => contains(cellFrame(o, i), p));
-    if (i >= 0) startCell(o, i);
-  } else if (o) startText(p, o);
-};
 $("code-toggle").onclick = () => {
-  const o = selected()[0];
+  const id = editing?.object.id || selected()[0]?.id;
+  finishText();
+  const o = book.objects.find(x => x.id === id);
+  if (o) selection = new Set([o.id]);
   if (o?.codeStyle != null)
     setObjects(
       book.objects.map((q) =>
@@ -2889,10 +3220,10 @@ for (const [i, c] of inks.entries()) {
   const b = button(
     "",
     () => {
-      setting(
-        tool === "marker" ? "markerInk" : tool === "text" ? "textInk" : "ink",
-        i,
-      );
+      if (tool === "text") {
+        if (editing) pickTool("text");
+        changeFormat(false,"color",inks[i]);
+      } else setting(tool === "marker" ? "markerInk" : "ink", i);
       refresh();
     },
     "swatch",

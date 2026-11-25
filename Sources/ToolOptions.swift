@@ -30,7 +30,10 @@ final class ToolOptionsController: NSViewController {
     [(String, ClosedRange<Double>, ReferenceWritableKeyPath<PenPreferences, Double>, String)]
   private var readouts: [NSTextField] = []
   private var colors: [ChromeButton] = []
+  var didInsert: (() -> Void)?
   var didRestore: (() -> Void)?
+  private var diameterSlider: NSSlider?
+  private var widthSlider: NSSlider?
   private var responseSlider: NSSlider?
   private var pressureSwitch: NSButton?
   private var preview: BrushSample?
@@ -69,7 +72,7 @@ final class ToolOptionsController: NSViewController {
     ])
     column.addArrangedSubview(
       chromeLabel(
-        tool == .marker ? "Highlighter" : tool.rawValue.capitalized, size: 15, weight: .semibold))
+        tool.title, size: 15, weight: .semibold))
     switch tool {
     case .brush:
       let sample = BrushSample(preferences: preferences)
@@ -77,9 +80,10 @@ final class ToolOptionsController: NSViewController {
       sample.widthAnchor.constraint(equalToConstant: 248).isActive = true
       column.addArrangedSubview(sample)
       preview = sample
-      let nibs = ["Pen", "Brush", "Fineliner"]
+      let nibs = WritingTip.allCases
       segment(
-        "Writing tip", labels: nibs, selected: nibs.firstIndex(of: preferences.nib) ?? 1,
+        "Writing tip", labels: nibs.map(\.rawValue),
+        selected: nibs.firstIndex(of: preferences.nib) ?? 1,
         action: #selector(nibChanged(_:)))
       let toggle = NSButton(
         checkboxWithTitle: "Use pen pressure", target: self, action: #selector(pressureChanged(_:)))
@@ -120,10 +124,7 @@ final class ToolOptionsController: NSViewController {
         action: #selector(eraseShape(_:)))
     case .text:
       check("Insert code block", preferences.code, #selector(codeChanged(_:)))
-      segment(
-        "Alignment", labels: TypeAlignment.allCases.map(\.rawValue),
-        selected: TypeAlignment.allCases.firstIndex(of: preferences.textAlignment)!,
-        action: #selector(alignment(_:)))
+      formatOptions(table: false)
     }
     for (i, item) in settings.enumerated() {
       let label = chromeLabel(item.0, size: 12, weight: .medium)
@@ -132,9 +133,16 @@ final class ToolOptionsController: NSViewController {
       let row = chromeStack([label, NSView(), value])
       row.widthAnchor.constraint(equalToConstant: 248).isActive = true
       let slider = NSSlider(
-        value: preferences[keyPath: item.2], minValue: item.1.lowerBound,
+        value: item.2 == \PenPreferences.textSize
+          ? canvas.currentFormat(table: false).size : preferences[keyPath: item.2],
+        minValue: item.1.lowerBound,
         maxValue: item.1.upperBound,
         target: self, action: #selector(slid(_:)))
+      if item.2 == \PenPreferences.eraserDiameter {
+        diameterSlider = slider
+        updateDiameter()
+      }
+      if item.2 == \PenPreferences.width { widthSlider = slider }
       if item.2 == \PenPreferences.pressure {
         responseSlider = slider
         syncPressure()
@@ -147,7 +155,7 @@ final class ToolOptionsController: NSViewController {
       column.addArrangedSubview(chromeStack([row, slider], spacing: 3, horizontal: false))
       display(i)
     }
-    if [.text, .brush, .shapes, .marker].contains(tool) && !preferences.paletteVisible {
+    if [.brush, .shapes, .marker].contains(tool) && !preferences.paletteVisible {
       colors = (tool == .marker ? markerColors : InkColor.colors).enumerated().map { index, color in
         let button = ChromeButton(target: self, action: #selector(chooseInk(_:)))
         button.controlWidth = 29
@@ -171,7 +179,9 @@ final class ToolOptionsController: NSViewController {
     reset.controlSize = .small
     column.addArrangedSubview(reset)
     view.layoutSubtreeIfNeeded()
-    preferredContentSize = CGSize(width: 280, height: ceil(column.fittingSize.height) + 30)
+    preferredContentSize = CGSize(
+      width: max(280, ceil(column.fittingSize.width) + 32),
+      height: ceil(column.fittingSize.height) + 30)
   }
 
   @objc private func restoreTool() {
@@ -181,7 +191,8 @@ final class ToolOptionsController: NSViewController {
     didRestore?()
   }
   @objc private func nibChanged(_ sender: NSSegmentedControl) {
-    preferences.nib = ["Pen", "Brush", "Fineliner"][sender.selectedSegment]
+    preferences.nib = WritingTip.allCases[sender.selectedSegment]
+    if let widthSlider { widthSlider.doubleValue = preferences.width; display(widthSlider.tag) }
     syncPressure()
     canvas.refreshTool()
   }
@@ -190,7 +201,7 @@ final class ToolOptionsController: NSViewController {
     syncPressure()
   }
   private func syncPressure() {
-    let supported = preferences.device.pressure && preferences.nib != "Fineliner"
+    let supported = preferences.device.pressure && preferences.nib != .fineliner
     pressureSwitch?.state = supported && preferences.usePressure ? .on : .off
     pressureSwitch?.isEnabled = supported
     responseSlider?.isEnabled = supported && preferences.usePressure
@@ -213,6 +224,16 @@ final class ToolOptionsController: NSViewController {
   @objc private func guidesChanged(_ s: NSButton) { preferences.guides = s.state == .on }
   private func tableOptions() {
     let selected = canvas.selectedObject
+    if tool == .table {
+      let hint = chromeLabel("Insert by grid", size: 11, color: chromeMuted)
+      let picker = TablePicker()
+      picker.preview = { [weak hint] cols, rows in hint?.stringValue = "\(cols) × \(rows)" }
+      picker.insert = { [weak self] cols, rows in
+        self?.canvas.insertGrid(rows: rows, columns: cols)
+        self?.didInsert?()
+      }
+      column.addArrangedSubview(chromeStack([picker, hint], spacing: 8))
+    }
     let grid = selected?.table ?? preferences.grid
     let size = selected?.table != nil ? selected!.frame.size : preferences.tableSize
     let values = [grid.rows, grid.columns, Int(size.width.rounded()), Int(size.height.rounded())]
@@ -241,6 +262,64 @@ final class ToolOptionsController: NSViewController {
     b.state = grid.header ? .on : .off
     headerCheck = b
     column.addArrangedSubview(b)
+    formatOptions(table: true)
+  }
+
+  private var tableFormatting: Bool { tool == .table || tool == .selector }
+  private func formatOptions(table: Bool) {
+    let f = canvas.currentFormat(table: table)
+    let title = table ? "Table text" : canvas.formatCell != nil ? "Cell text" : "Text style"
+    let color = NSPopUpButton()
+    color.controlSize = .small
+    for ink in InkColor.colors { color.addItem(withTitle: ink.0) }
+    color.selectItem(at: InkColor.colors.firstIndex(where: { $0.1 == f.color }) ?? 0)
+    color.target = self
+    color.action = #selector(formatColor(_:))
+    color.setAccessibilityLabel("Text color")
+    var row: [NSView] = [chromeLabel(title, size: 12, weight: .medium), NSView(), color]
+    if table {
+      let size = NSPopUpButton()
+      size.controlSize = .small
+      let sizes = Set([8, 10, 11, 12, 14, 16, 18, 24, 30, 36, Int(f.size.rounded())]).sorted()
+      for pt in sizes { size.addItem(withTitle: "\(pt) pt"); size.lastItem?.tag = pt }
+      size.selectItem(withTag: Int(f.size.rounded()))
+      size.target = self
+      size.action = #selector(formatSize(_:))
+      size.setAccessibilityLabel("Table type size")
+      row.append(size)
+    }
+    let header = chromeStack(row, spacing: 5)
+    header.widthAnchor.constraint(equalToConstant: 248).isActive = true
+    column.addArrangedSubview(header)
+    let traits = NSSegmentedControl(
+      labels: ["B", "I", "U"], trackingMode: .selectAny,
+      target: self, action: #selector(formatTraits(_:)))
+    traits.setAccessibilityLabel("Text emphasis")
+    for (i, label) in ["Bold", "Italic", "Underline"].enumerated() {
+      traits.setToolTip(label, forSegment: i)
+      traits.setSelected(f.traits & (1 << i) != 0, forSegment: i)
+    }
+    let align = NSSegmentedControl(
+      labels: TypeAlignment.allCases.map(\.rawValue),
+      trackingMode: .selectOne, target: self, action: #selector(alignment(_:)))
+    align.selectedSegment = TypeAlignment.allCases.firstIndex(of: f.alignment) ?? 0
+    align.setAccessibilityLabel("Alignment")
+    align.controlSize = .small
+    traits.controlSize = .small
+    column.addArrangedSubview(chromeStack([traits, align], spacing: 5))
+  }
+  @objc private func formatColor(_ sender: NSPopUpButton) {
+    canvas.changeFormat(table: tableFormatting) {
+      $0.color = InkColor.colors[sender.indexOfSelectedItem].1
+    }
+    canvas.refreshTool()
+  }
+  @objc private func formatSize(_ sender: NSPopUpButton) {
+    canvas.changeFormat(table: true) { $0.size = CGFloat(sender.selectedTag()) }
+  }
+  @objc private func formatTraits(_ sender: NSSegmentedControl) {
+    let mask = (0..<3).reduce(0) { $0 | (sender.isSelected(forSegment: $1) ? 1 << $1 : 0) }
+    canvas.changeFormat(table: tableFormatting) { $0.traits = mask }
   }
   @objc private func changeTable(_ sender: Any?) {
     guard tableFields.count == 4 else { return }
@@ -248,6 +327,12 @@ final class ToolOptionsController: NSViewController {
       rows: tableFields[0].integerValue, columns: tableFields[1].integerValue,
       header: headerCheck?.state == .on,
       size: CGSize(width: tableFields[2].doubleValue, height: tableFields[3].doubleValue))
+    let grid = preferences.grid, size = preferences.tableSize
+    for (field, value) in zip(
+      tableFields, [grid.rows, grid.columns, Int(size.width.rounded()), Int(size.height.rounded())])
+    {
+      field.integerValue = value
+    }
     canvas.refreshTool()
   }
 
@@ -265,13 +350,24 @@ final class ToolOptionsController: NSViewController {
   private func display(_ i: Int) {
     let item = settings[i]
     let value =
-      preferences[keyPath: item.2]
+      (item.2 == \PenPreferences.textSize
+        ? canvas.currentFormat(table: false).size : preferences[keyPath: item.2])
       * ((item.2 == \PenPreferences.smoothing || item.2 == \PenPreferences.markerOpacity) ? 100 : 1)
-    readouts[i].stringValue = String(format: item.3, value)
+    if item.2 == \PenPreferences.pressure {
+      let feel = abs(value - 1) < 0.005 ? "Linear" : value < 1 ? "Soft" : "Firm"
+      readouts[i].stringValue = String(format: "%@ · %.2f", feel, value)
+    } else {
+      readouts[i].stringValue = String(format: item.3, value)
+    }
   }
   @objc private func slid(_ slider: NSSlider) {
     let item = settings[slider.tag]
-    preferences[keyPath: item.2] = (slider.doubleValue * 100).rounded() / 100
+    let value = (slider.doubleValue * 100).rounded() / 100
+    if item.2 == \PenPreferences.textSize {
+      canvas.changeFormat(table: false) { $0.size = value }
+    } else {
+      preferences[keyPath: item.2] = value
+    }
     display(slider.tag)
     preview?.needsDisplay = true
     canvas.refreshTool()
@@ -280,12 +376,18 @@ final class ToolOptionsController: NSViewController {
     canvas.selectMode = SelectMode.allCases[sender.selectedSegment]
     canvas.refreshTool()
   }
+  private func updateDiameter() {
+    diameterSlider?.isEnabled = [.regular, .stroke].contains(preferences.eraseMode)
+  }
   @objc private func eraseShape(_ sender: NSSegmentedControl) {
     preferences.eraseMode = EraseMode.allCases[sender.selectedSegment]
+    updateDiameter()
     canvas.refreshTool()
   }
   @objc private func alignment(_ sender: NSSegmentedControl) {
-    preferences.textAlignment = TypeAlignment.allCases[sender.selectedSegment]
+    canvas.changeFormat(table: tableFormatting) {
+      $0.alignment = TypeAlignment.allCases[sender.selectedSegment]
+    }
     canvas.refreshTool()
   }
   @objc private func filterChanged(_ sender: NSButton) {
@@ -324,12 +426,12 @@ private final class BrushSample: NSView {
     NSColor(white: 0.97, alpha: 1).setFill()
     path.fill()
     var points: [InkPoint] = []
+    let style = preferences.writingStyle
     for i in 0...70 {
       let t = CGFloat(i) / 70
       let y = 15 + sin(t * 3 * .pi) * 6 + sin(t * 41) * 0.5
       let force = 0.1 + sin(.pi * t) * 0.9
-      let response = preferences.response(to: force)
-      let radius = preferences.width * 0.65 * response
+      let radius = style.radius(at: preferences.device.pressure ? force : nil)
       points.append(
         InkPoint(position: CGPoint(x: 12 + t * (bounds.width - 24), y: y), radius: radius))
     }

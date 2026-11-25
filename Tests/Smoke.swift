@@ -25,6 +25,163 @@ import WebKit
     guard !root.isHidden else { return [] }
     return (root as? T).map { [$0] } ?? root.subviews.flatMap { visibleViews(type, in: $0) }
   }
+  static func checkToolControls(_ canvas: NoteCanvas) {
+    let p = canvas.preferences
+    for tool in NoteTool.allCases where tool != .brush {
+      let panel = ToolOptionsController(tool: tool, canvas: canvas)
+      let view = panel.view
+      func control<T: NSControl>(_ type: T.Type, _ label: String) -> T {
+        visibleViews(type, in: view).first { $0.accessibilityLabel() == label }!
+      }
+      func select(_ label: String, _ index: Int) {
+        let segmented = control(NSSegmentedControl.self, label)
+        segmented.selectedSegment = index
+        segmented.sendAction(segmented.action, to: segmented.target)
+      }
+      func adjust(_ label: String, _ value: Double) {
+        let slider = control(NSSlider.self, label)
+        slider.doubleValue = value
+        slider.sendAction(slider.action, to: slider.target)
+      }
+      func click(_ title: String) {
+        visibleViews(NSButton.self, in: view).first { $0.title == title }!.performClick(nil)
+      }
+      switch tool {
+      case .selector:
+        select("Selection shape", 2)
+        click("Alignment guides"); click("Ink"); click("Text")
+        expect(
+          p.selectionMode == .lasso && !p.guides && p.selectionMask == 4,
+          "selector options update shape, guides and filters")
+      case .eraser:
+        for (index, mode) in EraseMode.allCases.enumerated() {
+          select("Eraser mode", index)
+          expect(
+            p.eraseMode == mode
+              && control(NSSlider.self, "Contact diameter").isEnabled
+                == [.regular, .stroke].contains(mode),
+            "eraser contact controls match " + mode.rawValue)
+        }
+        select("Eraser mode", 0)
+        adjust("Contact diameter", 25)
+        expect(p.eraserDiameter == 25, "contact diameter changes in Regular eraser")
+      case .text:
+        click("Insert code block"); select("Alignment", 2); adjust("Type size", 19)
+        expect(
+          p.code && p.textAlignment == .right && p.textSize == 19,
+          "text options update code, alignment and size")
+      case .marker:
+        adjust("Width", 13); adjust("Opacity", 0.5)
+        expect(
+          p.markerWidth == 13 && p.markerOpacity == 0.5,
+          "highlighter controls update width and opacity")
+      case .shapes:
+        select("Shape", 3); click("Constrain angles and proportions"); adjust("Line width", 4)
+        expect(
+          p.shape == .ellipse && p.constrain && p.shapeWidth == 4,
+          "shape options update geometry, constraints and width")
+      case .table:
+        for (label, n) in [("Rows", 2), ("Columns", 4), ("Width (pt)", 230), ("Height (pt)", 90)] {
+          let field = control(NSTextField.self, label)
+          field.integerValue = n
+          field.sendAction(field.action, to: field.target)
+        }
+        click("Header row")
+        expect(
+          p.grid.rows == 2 && p.grid.columns == 4 && !p.grid.header
+            && p.tableSize == CGSize(width: 230, height: 90),
+          "table controls update dimensions and header")
+      case .brush: break
+      }
+      click("Restore tool defaults")
+    }
+  }
+  static func checkWriter(_ owner: NotebookWindow) {
+    let canvas = owner.canvas, preferences = canvas.preferences
+    preferences.recognizeTabletPoint()
+    let toolbar = visibleViews(ChromeButton.self, in: owner.window!.contentView!)
+    let writer = toolbar.first { $0.shortcut == "Q" }!
+    expect(writer.caption == "Writer", "Q toolbar button is named Writer")
+    writer.performClick(nil)
+    let popover = owner.settingsPopover!
+    let panel = popover.contentViewController!.view
+    let tips = visibleViews(NSSegmentedControl.self, in: panel)[0]
+    let sliders = visibleViews(NSSlider.self, in: panel)
+    let width = sliders.first { $0.accessibilityLabel() == "Width" }!
+    let response = sliders.first { $0.accessibilityLabel() == "Pressure response" }!
+    let toggle = visibleViews(NSButton.self, in: panel).first { $0.title == "Use pen pressure" }!
+    expect(
+      (0..<tips.segmentCount).compactMap { tips.label(forSegment: $0) } == [
+        "Pen", "Brush", "Fineliner",
+      ],
+      "Writer offers its three tips in one panel")
+    func pick(_ tip: WritingTip) {
+      tips.selectedSegment = WritingTip.allCases.firstIndex(of: tip)!
+      tips.sendAction(tips.action, to: tips.target)
+      expect(
+        preferences.nib == tip && writer.caption == "Writer",
+        "switch to " + tip.rawValue + " keeps the Writer name")
+    }
+    func set(_ slider: NSSlider, _ value: Double) {
+      slider.doubleValue = value
+      slider.sendAction(slider.action, to: slider.target)
+    }
+    func draw(_ pressures: [Double]) -> [CGFloat] {
+      let start = ProcessInfo.processInfo.systemUptime
+      for (i, pressure) in pressures.enumerated() {
+        let type: CGEventType = i == 0 ? .leftMouseDown : .leftMouseDragged
+        let cg = CGEvent(
+          mouseEventSource: nil, mouseType: type, mouseCursorPosition: .zero, mouseButton: .left)!
+        cg.setIntegerValueField(.mouseEventSubtype, value: 1)
+        cg.setDoubleValueField(.mouseEventPressure, value: 1)
+        cg.setDoubleValueField(.tabletEventPointPressure, value: pressure)
+        cg.timestamp = UInt64((start + Double(i) * 0.025) * 1e9)
+        let event = NSEvent(cgEvent: cg)!, point = CGPoint(x: 40 + i * 2, y: 80)
+        if i == 0 {
+          canvas.startContact(event, at: point)
+        } else {
+          canvas.updateGesture(with: event, location: point)
+        }
+      }
+      canvas.resetInputForFocus()
+      guard case .ink(let pts, _) = canvas.notebook.objects.last?.content else { return [] }
+      return pts.map(\.radius)
+    }
+    var spans: [CGFloat] = []
+    for tip in WritingTip.allCases {
+      pick(tip)
+      expect(
+        abs(width.doubleValue - tip.defaultWidth) < 0.01,
+        tip.rawValue + " has its own starting width")
+      set(width, 3)
+      let radii = draw([0.1, 0.3, 0.6, 0.9])
+      expect(!radii.isEmpty, "tablet event commits a visible stroke")
+      spans.append(radii.max()! - radii.min()!)
+    }
+    expect(
+      spans[0] > 0.2 && spans[1] > 3 * spans[0] && spans[2] < 0.0001,
+      "embedded Wacom pressure produces a ballpoint, expressive brush and uniform fineliner")
+    expect(!response.isEnabled && !toggle.isEnabled, "Fineliner keeps a fixed tip")
+    pick(.brush)
+    set(width, 4)
+    set(response, 0.5)
+    let soft = draw([0.3])[0]
+    set(response, 2)
+    expect(soft > draw([0.3])[0] * 2, "Soft and Firm change the actual stroke at the same force")
+    toggle.performClick(nil)
+    expect(
+      Set(draw([0.1, 0.9])) == [2] && !response.isEnabled,
+      "pressure off honors the exact chosen width")
+    pick(.pen)
+    expect(width.doubleValue == 3, "returning to Pen restores its width in the slider")
+    pick(.brush)
+    expect(width.doubleValue == 4, "returning to Brush restores its own width")
+    popover.close()
+    preferences.restore()
+    canvas.load(Notebook())
+    canvas.chooseTool(.brush)
+    owner.window?.makeFirstResponder(canvas)
+  }
   static func main() throws {
     _ = NSApplication.shared
     NSApp.setActivationPolicy(.regular)
@@ -32,7 +189,7 @@ import WebKit
     let directory = qa.appendingPathComponent("session-" + UUID().uuidString, isDirectory: true)
     let defaults = UserDefaults(suiteName: "gridnote.qa." + UUID().uuidString)!
     let preferences = PenPreferences(defaults: defaults)
-    let brushSymbols = ["Pen", "Brush", "Fineliner"].map { tip in
+    let brushSymbols = WritingTip.allCases.map { tip in
       preferences.nib = tip
       return preferences.toolAppearance(.brush).symbol
     }
@@ -189,6 +346,8 @@ import WebKit
         isARepeat: false, keyCode: code)!
       return canvas.route(event)
     }
+    checkWriter(owner)
+    checkToolControls(canvas)
     let data = try Data(contentsOf: qa.appendingPathComponent("exercise.png"))
     pb.clearContents()
     pb.setData(data, forType: .png)
@@ -477,8 +636,9 @@ import WebKit
       table.frame.width == 275 && table.table?.header == false && table.table?.columns == 4,
       "numeric table size and header")
     let cell = CGPoint(x: 99, y: 173)
-    send(.leftMouseDown, cell, clicks: 2)
-    send(.leftMouseUp, cell, clicks: 2)
+    send(.leftMouseDown, cell)
+    send(.leftMouseUp, cell)
+    expect(canvas.editor != nil, "one Selector tap edits a table cell")
     canvas.editor?.insertText("Voltage", replacementRange: NSRange(location: 0, length: 0))
     expect(
       canvas.saveSnapshot.objects.last?.table?.cells.first == "Voltage",
@@ -490,6 +650,40 @@ import WebKit
     canvas.load(snapshot)
     canvas.restoreInteraction(pos)
     expect(canvas.editor?.string == "Voltage", "cell editor and caret restore")
+    expect(
+      key("\t", 48) == nil && canvas.editor?.string == "",
+      "Tab commits the cell and opens its neighbor")
+    canvas.editor?.insertText("Current", replacementRange: NSRange(location: 0, length: 0))
+    canvas.chooseTool(.text)
+    canvas.changeFormat(table: false) {
+      $0.traits = 7; $0.alignment = .right; $0.color = InkColor.colors[3].1
+    }
+    let styled = canvas.selectedObject!
+    expect(
+      styled.table?.formats?["0:1"]?.traits == 7 && styled.table?.formats?["0:0"] == nil,
+      "cell emphasis and color are independent of neighboring cells")
+    canvas.chooseTool(.table)
+    canvas.changeFormat(table: true) { $0.size = 16 }
+    expect(
+      canvas.selectedObject?.textFormat.size == 16
+        && canvas.selectedObject?.table?.formats?["0:1"]?.size == 16,
+      "table-wide change preserves independent cell formatting")
+    let formattedNotebook = try JSONDecoder().decode(
+      Notebook.self, from: JSONEncoder().encode(canvas.saveSnapshot))
+    expect(
+      formattedNotebook.objects.last?.table?.formats?["0:1"]?.alignment == .right,
+      "cell formatting survives notebook round-trip")
+    let tablePanel = ToolOptionsController(tool: .table, canvas: canvas)
+    let picker = visibleViews(TablePicker.self, in: tablePanel.view).first!
+    _ = picker.accessibilityPerformPress()
+    expect(
+      canvas.selectedObject?.table?.cells.count == 1
+        && canvas.notebook.objects.count == formattedNotebook.objects.count + 1,
+      "grid picker inserts a new table even when another is selected")
+    canvas.history.undo()
+    expect(
+      canvas.notebook.objects == formattedNotebook.objects,
+      "undo grid insertion restores the formatted table")
     canvas.finishText()
     pb.clearContents()
     pb.setString("int area(int x) { return x*x; }", forType: .string)
@@ -597,15 +791,16 @@ import WebKit
       "the gap contains no ink")
     owner.undoEdit(nil)
     expect(canvas.notebook.objects == whole, "one undo restores exact original ink")
-    preferences.nib = "Fineliner"
+    preferences.nib = .fineliner
     expect(
-      preferences.response(to: 0.1) == preferences.response(to: 1), "fineliner has constant width")
+      preferences.writingStyle.radius(at: 0.1) == preferences.writingStyle.radius(at: 1),
+      "fineliner has constant width")
     preferences.scrollSpeed = 0.62
     preferences.usePressure = false
     preferences.width = 4
     preferences.restore(.brush)
     expect(
-      preferences.width == 2 && preferences.nib == "Brush" && preferences.usePressure
+      preferences.width == 2 && preferences.nib == .brush && preferences.usePressure
         && preferences.scrollSpeed == 0.62 && preferences.eraseMode == .regular,
       "tool restore is scoped")
     preferences.restore()

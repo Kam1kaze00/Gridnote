@@ -11,7 +11,7 @@ import {
   pageCount,
   overlaps,
 } from "./engine.mjs";
-import { paintBlock } from "./blocks.mjs";
+import { paintBlock, paintText, textFormat } from "./blocks.mjs";
 let reader;
 async function pdfjs() {
   if (!reader)
@@ -209,29 +209,7 @@ export function paintPaper(ctx, page, design) {
   }
   ctx.restore();
 }
-export function textLines(ctx, value, width) {
-  const lines = [];
-  for (const paragraph of value.split("\n")) {
-    let line = "";
-    for (const word of paragraph.match(/\S+\s*|\s+/gu) || []) {
-      if (line && ctx.measureText(line + word).width > width) {
-        lines.push(line.trimEnd());
-        line = "";
-      }
-      if (ctx.measureText(word).width > width) {
-        for (const ch of word) {
-          if (line && ctx.measureText(line + ch).width > width) {
-            lines.push(line);
-            line = "";
-          }
-          line += ch;
-        }
-      } else line += word;
-    }
-    lines.push(line.trimEnd());
-  }
-  return lines;
-}
+export {textLines} from "./blocks.mjs";
 export function paintObject(ctx, o, onReady) {
   const [[x, y], [w, h]] = o.frame;
   if (o.table || o.codeStyle != null) {
@@ -267,34 +245,13 @@ export function paintObject(ctx, o, onReady) {
     }
     return;
   }
-  const { _0: value, _1: color, _2: size } = o.content.text;
+  const value = o.content.text._0;
   const [[lx, ly], [lw]] = o.layoutFrame || o.frame;
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
-  ctx.fillStyle = rgb(color);
-  ctx.font = size + "px -apple-system, BlinkMacSystemFont, Arial, sans-serif";
-  ctx.textBaseline = "top";
-  const lines = textLines(ctx, value, lw);
-  lines.forEach((line, i) => {
-    const rtl = /^[^a-zA-Z\u0590-\u08ff]*[\u0590-\u08ff]/.test(line);
-    const alignment =
-      o.alignment === "Right"
-        ? "right"
-        : o.alignment === "Center"
-          ? "center"
-          : o.alignment === "Auto" && rtl
-            ? "right"
-            : "left";
-    ctx.direction = rtl ? "rtl" : "ltr";
-    ctx.textAlign = alignment;
-    ctx.fillText(
-      line,
-      lx + (alignment === "right" ? lw : alignment === "center" ? lw / 2 : 0),
-      ly + size * 0.12 + i * size * 1.2,
-    );
-  });
+  paintText(ctx, value, textFormat(o), lx, ly, lw);
   ctx.restore();
 }
 export function drawPDFImage(ctx, img, index) {

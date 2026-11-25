@@ -7,11 +7,52 @@ enum ShapeKind: String, CaseIterable {
   case ellipse = "Oval"
 }
 
+struct NotebookTextFormat: Codable, Equatable {
+  var size: CGFloat = 14
+  var color: InkColor = InkColor.colors[0].1
+  var alignment: TypeAlignment = .natural
+  var traits = 0  // Bold, italic and underline, in toolbar order.
+
+  func attributes(header: Bool = false, code: Bool = false) -> [NSAttributedString.Key: Any] {
+    let weight: NSFont.Weight = traits & 1 != 0 ? .bold : header ? .semibold : .regular
+    var font =
+      code
+      ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+      : NSFont.systemFont(ofSize: size, weight: weight)
+    if traits & 2 != 0 { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = alignment.value
+    return [
+      .font: font, .foregroundColor: color.ns, .paragraphStyle: paragraph,
+      .underlineStyle: traits & 4 != 0 ? NSUnderlineStyle.single.rawValue : 0,
+    ]
+  }
+}
+
+extension NoteObject {
+  var textFormat: NotebookTextFormat {
+    get {
+      guard case .text(_, let color, let size) = content else { return NotebookTextFormat() }
+      return .init(
+        size: size, color: color, alignment: alignment ?? .natural, traits: textTraits ?? 0)
+    }
+    set {
+      guard case .text(let string, _, _) = content else { return }
+      content = .text(string, newValue.color, newValue.size)
+      alignment = newValue.alignment
+      textTraits = newValue.traits
+    }
+  }
+}
+
 struct TableGrid: Codable, Equatable {
   var rows: Int
   var columns: Int
   var header: Bool
   var cells: [String]
+  var formats: [String: NotebookTextFormat]?
+
+  func key(_ index: Int) -> String { "\(index / columns):\(index % columns)" }
 
   init(rows: Int = 3, columns: Int = 3, header: Bool = true) {
     self.rows = min(40, max(1, rows))
@@ -23,7 +64,12 @@ struct TableGrid: Codable, Equatable {
     var next = Self(rows: rows, columns: columns, header: header)
     for r in 0..<min(self.rows, next.rows) {
       for c in 0..<min(self.columns, next.columns) where r * self.columns + c < cells.count {
-        next.cells[r * next.columns + c] = cells[r * self.columns + c]
+        let i = r * self.columns + c
+        next.cells[r * next.columns + c] = cells[i]
+        if let format = formats?[key(i)] {
+          if next.formats == nil { next.formats = [:] }
+          next.formats?[key(i)] = format
+        }
       }
     }
     return next
@@ -93,13 +139,10 @@ enum CodeFormat {
       srgbRed: CGFloat(v >> 16) / 255, green: CGFloat(v >> 8 & 255) / 255,
       blue: CGFloat(v & 255) / 255, alpha: 1)
   }
-  static func attributed(_ text: String, size: CGFloat, highlighted: Bool) -> NSAttributedString {
-    let value = NSMutableAttributedString(
-      string: text,
-      attributes: [
-        .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
-        .foregroundColor: InkColor.colors[0].1.ns,
-      ])
+  static func attributed(_ text: String, format: NotebookTextFormat, highlighted: Bool)
+    -> NSAttributedString
+  {
+    let value = NSMutableAttributedString(string: text, attributes: format.attributes(code: true))
     if highlighted {
       tokens.enumerateMatches(in: text, range: NSRange(location: 0, length: value.length)) {
         match, _, _ in

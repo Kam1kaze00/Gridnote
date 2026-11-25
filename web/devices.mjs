@@ -97,8 +97,14 @@ export async function detectHardware() {
 }
 export function observePointer(e) {
   if (e.pointerType === "pen") {
+    const profile = hardware?.profile || (appleSurface ? "apple" : "other");
+    if (!observedPen && prefs.pendingTuning) {
+      prefs[profile] = { ...prefs[profile], ...prefs.pendingTuning };
+      delete prefs.pendingTuning;
+      remember();
+    }
     observedPen = true;
-    device = hardware?.profile || (appleSurface ? "apple" : "other");
+    device = profile;
   } else if (
     e.pointerType === "mouse" &&
     !mobileSurface &&
@@ -117,6 +123,8 @@ export function useFinger(value) {
   prefs.fingerWriting = value;
   remember();
 }
+const tipWidths = { Pen: 1.5, Brush: 2, Fineliner: 0.9 };
+const deviceTuning = new Set(["pressure", "smoothing", "scroll"]);
 export const defaultSettings = {
   nib: "Brush",
   usePressure: true,
@@ -128,6 +136,8 @@ export const defaultSettings = {
   ink: 0,
   textInk: 0,
   textSize: 14,
+  textTraits: 0,
+  tableText: null,
   alignment: "Auto",
   select: "Tap",
   erase: "Stroke",
@@ -148,9 +158,9 @@ export const defaultSettings = {
   tableHeight: 84,
 };
 export function pressureResponse(p, force) {
-  if (!p.usePressure || p.nib === "Fineliner") return 1;
+  if (!p.usePressure || p.nib === "Fineliner" || !Number.isFinite(force)) return 1;
   const level = Math.pow(Math.max(0, Math.min(1, force)), p.pressure);
-  return p.nib === "Pen" ? 0.72 + 0.55 * level : 0.3 + 1.3 * level;
+  return p.nib === "Pen" ? 0.78 + 0.38 * level : 0.18 + 1.52 * level;
 }
 export function restore(tool) {
   if (!tool) prefs = {};
@@ -159,20 +169,32 @@ export function restore(tool) {
       brush: ["nib", "usePressure", "width", "smoothing", "pressure", "ink"],
       selector: ["select", "guides", "mask"],
       eraser: ["erase", "diameter"],
-      text: ["textSize", "textInk", "alignment", "code"],
+      text: ["textSize", "textInk", "alignment", "textTraits", "code"],
       marker: ["markerWidth", "opacity", "markerInk"],
       shapes: ["shape", "shapeWidth", "constrain"],
-      table: ["rows", "columns", "header", "tableWidth", "tableHeight"],
+      table: ["rows", "columns", "header", "tableWidth", "tableHeight", "tableText"],
     };
-    for (const key of keys[tool]) if (prefs[device]) delete prefs[device][key];
+    for (const key of keys[tool]) {
+      if (prefs.tools) delete prefs.tools[key];
+      if (prefs.pendingTuning) delete prefs.pendingTuning[key];
+      const profiles = deviceTuning.has(key) ? [device] : Object.keys(devices);
+      for (const profile of profiles) if (prefs[profile]) delete prefs[profile][key];
+    }
+    if (tool === "brush") delete prefs.tipWidths;
   }
   remember();
 }
 export function settings() {
+  const legacy = prefs[device] || {};
+  const nib = prefs.tools?.nib || legacy.nib || "Brush";
+  const previousWidth = nib === (legacy.nib || "Brush") ? legacy.width : undefined;
   return {
     ...defaultSettings,
     smoothing: ["mouse", "touch"].includes(device) ? 0.65 : 0.48,
-    ...prefs[device],
+    ...legacy,
+    ...prefs.tools,
+    nib,
+    width: prefs.tipWidths?.[nib] ?? previousWidth ?? tipWidths[nib] ?? tipWidths.Brush,
   };
 }
 function remember() {
@@ -183,7 +205,15 @@ function remember() {
   }
 }
 export function setting(key, value) {
-  prefs[device] = { ...prefs[device], [key]: value };
+  if (key === "width") {
+    prefs.tipWidths = { ...prefs.tipWidths, [settings().nib]: value };
+  } else if (deviceTuning.has(key)) {
+    prefs[device] = { ...prefs[device], [key]: value };
+    // Preserve adjustments made before the first pen event identifies the tablet.
+    if (!hardware && !observedPen) prefs.pendingTuning = { ...prefs.pendingTuning, [key]: value };
+  } else {
+    prefs.tools = { ...prefs.tools, [key]: value };
+  }
   remember();
 }
 export function deviceHelp() {

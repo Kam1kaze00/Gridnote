@@ -354,6 +354,16 @@ export function transform(o, anchor, scale, dx, dy) {
     copy.content = {
       text: { ...o.content.text, _2: o.content.text._2 * scale },
     };
+  if (scale !== 1 && o.table?.formats)
+    copy.table = {
+      ...o.table,
+      formats: Object.fromEntries(
+        Object.entries(o.table.formats).map(([key, style]) => [
+          key,
+          { ...style, size: style.size * scale },
+        ]),
+      ),
+    };
   if (o.layoutFrame)
     copy.layoutFrame = [
       apply(o.layoutFrame[0]),
@@ -481,7 +491,7 @@ export function validate(book) {
         d._0.some((p) => !(p.radius > 0) || !p.position.every(Number.isFinite)))
     )
       throw Error("Invalid ink data.");
-    if (k === "text" && (typeof d._0 !== "string" || !Number.isFinite(d._2)))
+    if (k === "text" && (typeof d._0 !== "string" || !(d._2 > 0 && d._2 <= 1_000_000)))
       throw Error("Invalid text.");
     if (
       o.table &&
@@ -496,6 +506,14 @@ export function validate(book) {
         o.table.cells.some((s) => typeof s !== "string"))
     )
       throw Error("Invalid table.");
+    if (o.table?.formats) for (const [key, f] of Object.entries(o.table.formats)) {
+      const [row,col] = key.split(":").map(Number);
+      if (!/^\d+:\d+$/.test(key) || row >= o.table.rows || col >= o.table.columns ||
+          !f || !(f.size > 0 && f.size <= 1_000_000) || !Number.isInteger(f.traits) || f.traits < 0 || f.traits > 7 ||
+          !["Auto","Left","Center","Right"].includes(f.alignment) ||
+          ![f.color?.r,f.color?.g,f.color?.b].every(v => Number.isFinite(v) && v >= 0 && v <= 1))
+        throw Error("Invalid table text format.");
+    }
     if (k === "image" && typeof d._0 !== "string")
       throw Error("Missing image.");
     if (!["ink", "text", "image"].includes(k))

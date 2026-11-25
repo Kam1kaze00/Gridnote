@@ -112,9 +112,17 @@ final class NotebookStorage {
         $0.count == notebook.sourcePages && $0.allSatisfy { $0 >= -1 && $0 < 100000 }
       }) ?? true,
       notebook.objects.allSatisfy({ o in
+        if case .text(_, _, let size) = o.content, !(size > 0 && size <= 1_000_000) { return false }
         guard let grid = o.table else { return true }
         return (1...40).contains(grid.rows) && (1...16).contains(grid.columns)
           && grid.cells.count == grid.rows * grid.columns
+          && (grid.formats ?? [:]).allSatisfy { key, f in
+            let rc = key.split(separator: ":").compactMap { Int($0) }
+            return rc.count == 2 && (0..<grid.rows).contains(rc[0])
+              && (0..<grid.columns).contains(rc[1])
+              && f.size > 0 && f.size <= 1_000_000 && (0...7).contains(f.traits)
+              && [f.color.r, f.color.g, f.color.b].allSatisfy { (0...1).contains($0) }
+          }
       })
     else { throw StorageError("This notebook contains invalid table or page data.") }
     return notebook

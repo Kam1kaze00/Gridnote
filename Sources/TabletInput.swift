@@ -47,6 +47,13 @@ extension NSEvent {
   }
 
   var isTabletSample: Bool { type == .tabletPoint || (isPointerEvent && subtype == .tabletPoint) }
+  var tipPressure: Float {
+    // Mouse events with a tablet subtype carry separate mouse and tablet pressures.
+    if type != .tabletPoint, isTabletSample, let cgEvent {
+      return Float(cgEvent.getDoubleValueField(.tabletEventPointPressure))
+    }
+    return pressure
+  }
   var isTabletProximity: Bool {
     type == .tabletProximity || (isPointerEvent && subtype == .tabletProximity)
   }
@@ -98,6 +105,11 @@ extension NoteCanvas {
     }
     if event.type == .keyDown {
       let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+      if editor != nil, event.keyCode == 48, flags.isEmpty || flags == .shift,
+        advanceCell(backward: flags == .shift)
+      {
+        return nil
+      }
       if editor != nil,
         event.keyCode == 53 || (flags == .command && (event.keyCode == 36 || event.keyCode == 76))
       {
@@ -137,9 +149,13 @@ extension NoteCanvas {
     var raw: NSEvent.ButtonMask?
     let lastTabletTip = lastTabletInput?.tip == true
     if event.isTabletSample {
+      if preferences.device == .mouse {
+        preferences.recognizeTabletPoint()
+        refreshTool()
+      }
       raw = event.buttonMask
       lastTabletInput = (
-        windowPoint, event.timestamp, event.pressure, raw?.contains(.penTip) == true
+        windowPoint, event.timestamp, event.tipPressure, raw?.contains(.penTip) == true
       )
     }
     var upper: Bool?
@@ -210,7 +226,7 @@ extension NoteCanvas {
     }
     if event.type == .leftMouseDown, let raw,
       !raw.intersection([.penUpperSide, .penLowerSide]).isEmpty,
-      !raw.contains(.penTip) || event.pressure == 0
+      !raw.contains(.penTip) || event.tipPressure == 0
     {
       translatedSideClick = true
       return nil
@@ -233,7 +249,7 @@ extension NoteCanvas {
       if lastTabletTip, raw?.contains(.penTip) == false, tipIsDown || ignoredTip {
         tipIsDown = false
         ignoredTip = false
-        finishGesture()
+        finishContact(at: local, event: event)
         returnToBrushAfterLift()
       } else if raw?.contains(.penTip) == true, !lastTabletTip, !tipIsDown, !ignoredTip, onPaper {
         startContact(event, at: local)
