@@ -1,104 +1,53 @@
-![A waving pencil on the left and Gridnote on the right of a teal drafting desk](docs/images/drafting-desk.png)
+![Gridnote, a notebook for handwritten work](docs/images/github-banner.png)
 
-# Gridnote
+Paste an exercise, work through it with a pen, and share the finished pages as an A4 PDF. Gridnote saves your editable notebook locally and brings you back to the same page and zoom.
 
-Paste an exercise, solve it by hand, and share the finished A4 pages. Gridnote saves locally and reopens at the same place.
+**[Open Gridnote in your browser](https://kam1kaze00.github.io/Gridnote/)** · **[Download a desktop app](https://github.com/Kam1kaze00/Gridnote/releases/latest)**
 
-[Open the notebook](https://kam1kaze00.github.io/Gridnote/) · [Download Gridnote](https://github.com/Kam1kaze00/Gridnote/releases/latest) · [Ask a question](https://github.com/Kam1kaze00/Gridnote/discussions/categories/q-a) · [Suggest an idea](https://github.com/Kam1kaze00/Gridnote/discussions/categories/ideas)
-
-![Gridnote on Mac with a circuit exercise, handwritten solution and table of values](docs/images/macos-writing.png)
+![The Mac notebook with a handwritten solution and a velocity–time graph](docs/images/notebook.png)
 
 ## Get started
 
-| Device | First launch |
+| Device | How to open Gridnote |
 | --- | --- |
-| Mac with a pen tablet | Choose [Apple silicon](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-arm64.zip) or [Intel](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-x86_64.zip) for macOS 13 or later. Extract the ZIP and open Gridnote. About This Mac shows your chip. |
-| Windows | Download [x64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-windows-amd64.zip) or [ARM64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-windows-arm64.zip). Extract the ZIP and run `Gridnote.exe`. |
-| Linux | Download [x86-64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-linux-amd64.zip) or [ARM64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-linux-arm64.zip). Extract the ZIP and run `./Gridnote` in that folder. If your extractor drops execute permission, run `chmod +x Gridnote` first. |
-| iPad or iPhone | Open the browser app in Safari. Choose **Share → Add to Home Screen**, enable **Open as Web App** if shown, then open the new icon while online. |
-| Android or Chromebook | Open the browser app in Chrome and choose the browser’s **Install** action. |
+| Mac | Download [Apple silicon](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-arm64.zip) or [Intel](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-x86_64.zip), extract the ZIP and open Gridnote. Requires macOS 13 or later. |
+| iPad or iPhone | Open the [web app](https://kam1kaze00.github.io/Gridnote/) in Safari. Choose **Share → Add to Home Screen** to install it. |
+| Android tablet or phone | Open the [web app](https://kam1kaze00.github.io/Gridnote/) in Chrome and choose **Install app** or **Add to Home screen**. |
+| Windows or Linux | Get the ZIP for your processor from [Downloads](https://github.com/Kam1kaze00/Gridnote/releases/latest). Extract it and start Gridnote. Keep the launcher running while using the notebook in your browser. |
 
-On the web, **Ready offline** appears on the launcher and in the notebook menu after setup finishes. Open the same browser profile or Home Screen icon when you return. The Windows and Linux launchers open the editor in your default browser. Keep the launcher running during use.
+The launcher offers **Continue notebook**, **New notebook** and **Open file**. The first time you use Gridnote, choose New or open an existing notebook or PDF. On a tablet, wait for **Ready offline** before disconnecting.
 
-Desktop downloads are community builds. The Mac app has an ad hoc signature and has not been notarized by Apple. The Windows executable is unsigned. Gatekeeper or SmartScreen may restrict first launch. The browser app is available on managed devices where downloads are restricted. [Apple distribution guidance](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) · [Microsoft SmartScreen guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+![Compact Mac launcher with the original logo, notebook actions and detected Wacom tablet](docs/images/launcher.png)
 
-**If your Mac blocks Gridnote:** Extract the ZIP and try opening Gridnote once. For an unidentified-developer warning, open **System Settings → Privacy & Security → Open Anyway** for Gridnote, then confirm. Both Mac ZIPs contain these steps and a Terminal checksum command. [Apple’s instructions](https://support.apple.com/en-us/102445)
+## Work on a page
 
-Gridnote opens to a launcher. Pick a **Major** and preview its six tools, or leave **None** for a regular notebook. **Continue notebook** restores your last notebook, scroll position and zoom. **New notebook** starts a blank page. **Open file** opens a notebook or a PDF. You can switch majors later through **File → Notebook Launcher** on Mac or **Notebook menu → Notebook launcher** on the web.
+- **Write.** Press **Q** for Writer. Use Pen for pressure-sensitive ballpoint shading, Brush for tapered strokes, or Fineliner for an even line. Tap Writer again to adjust the tip and width.
+- **Edit.** Press **W** to select, **E** to erase or **R** to type. Select a stroke, image, text block or table to move or resize it. Undo and redo work on edits and page operations.
+- **Add the exercise.** Paste a screenshot, import an image or open a PDF. On a tablet or phone, you can photograph and crop an exercise directly into the current page.
+- **Work it out.** Add a highlighter mark, table, code block or shape. Drag **Shapes → X–Y axes** to lay out a graph. Use **Solve** to review a supported equation or code snippet. You can correct what the app reads before using the result.
+- **Organize and share.** Choose grid, ruled, dotted or plain paper. Open **Pages** to add or move sheets. **Clear Writing** removes Writer strokes on the current page. **Preview PDF**, **Export PDF** and the system share sheet use the same A4 page breaks.
 
-![The compact Mac launcher with the waving pencil, Electrical Engineering tools, and a button to continue the series circuit notebook](docs/images/macos-launcher.png)
+On a two-button Wacom pen, tap the upper switch, erase, then lift to return to Writer. Hold the lower switch and move vertically to scroll.
 
-Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
+![A tablet showing page navigation, a circuit worksheet, handwritten calculations and a table of values](docs/images/tablet.png)
 
-## In a lecture
+Try the circuit worksheet in the screenshot as an [editable notebook](docs/examples/Series%20circuit.gridnote) or [PDF](docs/examples/Series%20circuit.pdf).
 
-- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. **Writer** offers Pen, Brush and Fineliner. Each tip remembers its width. Press lightly with Pen for pale ballpoint hatching. Press harder for a darker line. Brush can go from a hairline to a broad downstroke in one movement. Fineliner gives diagrams and small symbols an even outline.
-- Choose **Shapes → X–Y axes** and drag out a graph. Its centered axes and equally spaced ticks move and resize as one object.
-- Tap a text block or table cell with **Selector** to edit it. Drag to move it. **Text** changes its size, color, alignment, bold, italic or underline. On a tablet, use the arrows to move between cells and **Done** to return to the page. With a keyboard, use **Tab** and **Shift+Tab**.
-- Open **Table** and choose columns and rows on the insertion grid, or drag on the paper for a custom footprint. Table options format the whole table. Open **Text** while editing a cell to format just that cell. [See the table picker](docs/images/table-picker.png).
-- On a two-button pen, tap the upper switch, erase, then lift to return to Writer. Hold the lower switch and move vertically to scroll.
-- Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. New images fit within 15 × 10 cm on A4 and shrink further on a zoomed-in or short screen. Small crops keep their natural size. Drag a corner to enlarge an image, or choose **Selection → Fit Image to Page**. Drag a corner to see the size in millimetres and guides for matching an adjacent object’s width or height.
-- Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Clear Writing** beside the paper control removes Pen, Brush and Fineliner strokes from the current page. Typed notes, highlights, shapes, images and tables stay in place. Undo restores the handwriting. To remove typed notes, use **Remove Typed Text** in the notebook menu (Edit on Mac).
-- Choose **Solve** to open a single exercise. On a page with several, tap the highlighted problem you want. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
-- **Preview PDF** opens at the current page. **Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
+## Files and privacy
 
-![Pen, Brush and Fineliner drawing identical strokes, beside a graph created with the X–Y axes shape](docs/images/writer-and-axes.png)
+Save an editable **.gridnote** copy to move work between devices or back it up before clearing browser storage. PDF export creates a separate document. Image recognition runs on the device. The optional **Ask AI** action sends the selected exercise to the configured study server. The hosted web app also offers a **Copy to ChatGPT** handoff.
 
-![Tablet notebook with the Writer panel open and Pen selected](docs/images/tablet-writing.png)
+## Build from source
 
-## Appearance
+On a Mac with Command Line Tools installed, run `./build.sh` and open `build/Gridnote.app`. The downloadable Mac app is ad hoc signed. If macOS blocks the first launch, follow the instructions included in the ZIP. [Apple’s guidance](https://support.apple.com/en-us/102445)
 
-Choose a theme in the launcher or open **Options → Theme** while writing. The launcher, pencil mark, type, tool icons, panels, and new-notebook paper change together. In an existing notebook, **Paper → Stationery** sets the look for one page or the notebook default. Your saved stationery prints in the PDF.
-
-[Explore the five themes in the interactive gallery](https://kam1kaze00.github.io/Gridnote/gallery/). Switch between **Notebook** and **Launcher** to see the same theme in both places.
-
-| Theme | What it looks like |
-| --- | --- |
-| [Default](https://kam1kaze00.github.io/Gridnote/gallery/#default) | Drafting Desk. A waving pencil on a taped sketch, a teal board and a blue notebook grid. |
-| [70s Cartoon](https://kam1kaze00.github.io/Gridnote/gallery/#cartoon) | A grinning pencil, inked tools and a double margin on ivory paper. |
-| [Tokyo Neon](https://kam1kaze00.github.io/Gridnote/gallery/#tokyo) | Transit lettering, turquoise route lines and numbered station circles. |
-| [Cyberpunk](https://kam1kaze00.github.io/Gridnote/gallery/#cyber) | Amber keys, graphite panels and monospaced instrument lettering. |
-| [Pixelated](https://kam1kaze00.github.io/Gridnote/gallery/#pixel) | A pocket-console pencil, square-built tools and four shades of green. |
-
-![Pixelated notebook with a four-tone toolbar, pixel lettering and a worked engineering exercise](docs/images/pixel-editor.png)
-
-## Major tools
-
-Choose a tool in the row below the writing toolbar. Adjust its inputs and use **Insert** to put the result on the page. The full set works offline.
-
-The panel fits the selected tool and resizes as its result changes. [See the Solve and calculator panels in all five themes](docs/images/study-panels.png).
-
-| Major | Tools |
-| --- | --- |
-| Chemistry | Periodic table, molar mass, molarity, dilution, mass to moles, ideal gas |
-| Physics | Kinematics, net force, kinetic energy, momentum, gravity, waves |
-| Mathematics | Equations, right triangles, two-variable linear systems, dot product, statistics, circles |
-| Electrical Engineering | Ohm’s law, resistors, voltage divider, RC time constant, reactance, capacitor energy |
-| Mechanical Engineering | Axial stress, strain, torque, shaft power, springs, thermal expansion |
-| Computer Science | Number bases, two’s complement, bitwise operations, data sizes, truth tables, binary search |
-| Medicine | Microscopy, anatomical planes, direction terms, tissue types, heart blood flow, cell cycle |
-
-## Storage and optional AI
-
-The Mac app writes editable notebooks and recovery copies locally. The portable app saves in the current browser’s local library. Download a `.gridnote` file from the notebook menu to back it up or move it to another device.
-
-Image recognition runs on the device. **Ask AI** sends the selected exercise text and displayed crop to a configured local study server. The server uses the OpenAI Responses API with your key and API billing. A static hosted build supports the **Copy to ChatGPT** handoff.
-
-## Build
-
-On macOS with the Command Line Tools, run `./build.sh` and open `build/Gridnote.app`. The build targets macOS 13 or newer and uses an ad hoc signature.
-
-For the offline portable app, run the following from the source directory.
+To run the portable editor locally, use Python 3 from the repository root.
 
 ```sh
 python3 scripts/prepare_web.py build/standalone
-python3 study_server.py
+python3 study_server.py --site build/standalone
 ```
 
-Open [the local notebook](http://127.0.0.1:8765). Set `OPENAI_API_KEY` in the server environment to enable Ask AI. To host the installable app, serve `build/standalone` over HTTPS. To build a Windows or Linux executable with Go, use `python3 scripts/desktop.py build/standalone build/releases --os windows --arch amd64`. The launcher serves embedded assets on loopback.
+Open [the local notebook](http://127.0.0.1:8765). To enable Ask AI, set `OPENAI_API_KEY` in the server environment. To build a Windows or Linux launcher, use `scripts/desktop.py` with Go installed. Release packaging and verification are described in the [implementation notes](docs/implementation.md).
 
-To package a release from a committed revision on a Mac with Go and the Command Line Tools, run `python3 scripts/release.py build/releases --ref HEAD`. The command assembles eight ZIPs and their SHA-256 checksums from that revision in a clean directory.
-
-For a problem report, include your OS, device, Gridnote version and the steps that trigger it. [Report an issue](https://github.com/Kam1kaze00/Gridnote/issues)
-
-The project includes an [online user guide](https://kam1kaze00.github.io/Gridnote/guide.html), [design sources and verification notes](docs/implementation.md), and an [MIT license](LICENSE). Bundled dependencies retain their own licenses.
+[User guide](https://kam1kaze00.github.io/Gridnote/guide.html) · [Report an issue](https://github.com/Kam1kaze00/Gridnote/issues) · [MIT license](LICENSE)

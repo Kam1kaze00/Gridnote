@@ -4,8 +4,6 @@ import PDFKit
 final class PenSettingsController: NSViewController {
   private let preferences: PenPreferences
   var didRestore: (() -> Void)?
-  private let majorPicker = NSPopUpButton()
-  private let themePicker = NSPopUpButton()
   private let setup: () -> Void
   private var values: [NSTextField] = []
   private var sliders: [NSSlider] = []
@@ -16,7 +14,7 @@ final class PenSettingsController: NSViewController {
     self.preferences = preferences
     self.setup = setup
     super.init(nibName: nil, bundle: nil)
-    preferredContentSize = CGSize(width: 295, height: 285)
+    preferredContentSize = CGSize(width: 295, height: 195)
   }
   required init?(coder: NSCoder) { nil }
 
@@ -29,12 +27,6 @@ final class PenSettingsController: NSViewController {
     let device = chromeLabel(preferences.deviceDescription, size: 12, color: chromeMuted)
     let stack = chromeStack([heading, device], spacing: 11, horizontal: false)
     view.addSubview(stack)
-    themePicker.addItems(withTitles: NotebookTheme.allCases.map(\.rawValue))
-    themePicker.target = self
-    themePicker.action = #selector(changeTheme(_:))
-    themePicker.setAccessibilityLabel("Theme")
-    themePicker.selectItem(withTitle: preferences.theme.rawValue)
-    stack.addArrangedSubview(chromeStack([chromeLabel("Theme"), themePicker]))
     for index in labels.indices {
       let label = chromeLabel(labels[index], size: 12, weight: .medium)
       let value = chromeLabel("", size: 11, color: chromeMuted)
@@ -57,12 +49,6 @@ final class PenSettingsController: NSViewController {
     let help = ChromeButton(
       "Device controls", symbol: "questionmark.circle", style: .outlined, target: self,
       action: #selector(openSetup))
-    majorPicker.addItems(withTitles: PenPreferences.majors)
-    majorPicker.selectItem(withTitle: preferences.major)
-    majorPicker.target = self
-    majorPicker.action = #selector(changeMajor)
-    majorPicker.setAccessibilityLabel("Major")
-    stack.addArrangedSubview(chromeStack([chromeLabel("Major", size: 12), majorPicker]))
     stack.addArrangedSubview(help)
     stack.addArrangedSubview(
       NSButton(title: "Restore all settings", target: self, action: #selector(restoreAll)))
@@ -82,21 +68,8 @@ final class PenSettingsController: NSViewController {
     preferences.scrollSpeed = value
     display(slider.tag)
   }
-  @objc private func changeTheme(_ sender: NSPopUpButton) {
-    guard let title = sender.titleOfSelectedItem, let theme = NotebookTheme(rawValue: title) else {
-      return
-    }
-    preferences.theme = theme
-    didRestore?()
-  }
-  @objc private func changeMajor() {
-    preferences.major = majorPicker.titleOfSelectedItem ?? "None"
-    didRestore?()
-  }
   @objc private func restoreAll() {
     preferences.restore()
-    majorPicker.selectItem(withTitle: "None")
-    themePicker.selectItem(at: 0)
     sliders[0].doubleValue = preferences.scrollSpeed
     display(0)
     didRestore?()
@@ -119,7 +92,7 @@ final class PDFPreviewController: NSWindowController, NSWindowDelegate {
       contentRect: rect, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
     super.init(window: panel)
     panel.isReleasedWhenClosed = false
-    panel.appearance = ChromeTheme.appearance
+    panel.appearance = NSAppearance(named: .darkAqua)
     panel.title = "PDF Preview"
     panel.delegate = self
     panel.collectionBehavior.insert(.fullScreenAuxiliary)

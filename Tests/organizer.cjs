@@ -8,12 +8,10 @@ const { webkit } = require("playwright"),
     const errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
     await p.goto(process.env.GRIDNOTE_URL || "http://127.0.0.1:8793/");
-    await p.getByLabel("Major", {exact:true}).selectOption("Chemistry");
     await p
       .locator("#file")
       .setInputFiles(path.resolve(__dirname, "fixtures/exercise.pdf"));
     await p.waitForSelector("#sheet");
-    assert.equal(await p.locator("#subject-strip button").count(),6);
     const saved = async () => {
       await p.waitForTimeout(350);
       return p.evaluate(async () => {
@@ -21,14 +19,12 @@ const { webkit } = require("playwright"),
         return (await s.loadRecord(await s.loadState("last"))).book;
       });
     };
-    await p.getByRole("button",{name:"Periodic table",exact:true}).click();
-    const f = p.frameLocator(".subject-frame");
-    await f.getByRole("textbox", { name: "Find an element" }).fill("79");
-    assert.match(await f.locator("#result").innerText(), /Gold \(Au\)/);
-    await f.getByRole("button", { name: "Insert in notebook" }).click();
-    assert(
-      (await saved()).objects.some((o) => o.content.text?._0.includes("Gold")),
-    );
+    await p.keyboard.press("r");
+    const sheet = await p.locator("#sheet").boundingBox();
+    await p.mouse.click(sheet.x + 110, sheet.y + 85);
+    await p.locator("#editor").fill("Lab observations");
+    await p.keyboard.press("Control+Enter");
+    assert((await saved()).objects.some(o => o.content.text?._0 === "Lab observations"));
     await p.click("#page");
     await p.getByRole("button", { name: "Insert page after" }).click();
     let n = await saved();
@@ -76,10 +72,9 @@ const { webkit } = require("playwright"),
     assert.equal((await saved()).objects.length, 0);
     await p.click("#undo");
     n = await saved();
-    assert(n.objects[0].content.text._0.includes("Gold"));
+    assert(n.objects[0].content.text._0 === "Lab observations");
     await p.reload();
     await p.click("#continue");
-    await p.waitForSelector("#subject-strip");
     await p.click("#preview");
     await p.waitForFunction(() =>
       document.querySelector("#pdfcount")?.textContent.includes("/ 3"),
@@ -124,7 +119,7 @@ const { webkit } = require("playwright"),
     );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS optional major, searchable periodic table, insert result, PDF page insertion/reordering/deletion/undo, three-page preview and two-line photographed word problem.",
+      "PASS typed annotations, PDF page insertion/reordering/deletion/undo, three-page preview and two-line photographed word problem.",
     );
   } finally {
     await b.close();

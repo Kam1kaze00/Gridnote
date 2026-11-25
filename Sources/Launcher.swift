@@ -1,40 +1,26 @@
 import AppKit
-import JavaScriptCore
 import UniformTypeIdentifiers
 import WebKit
 
-enum MajorCatalog {
-  static let tools: [String: [String]] = {
-    let url = Bundle.main.url(forResource: "majors", withExtension: "js")
-      ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("web/majors.js")
-    guard let source = try? String(contentsOf: url, encoding: .utf8), let context = JSContext() else { return [:] }
-    context.evaluateScript(source)
-    return context.evaluateScript("Object.fromEntries(Object.entries(GridnoteKits.kits).map(([name,tools]) => [name,tools.map(t=>t.name)]))")?.toDictionary() as? [String: [String]] ?? [:]
-  }()
-}
-
 final class LauncherController: NSWindowController, WKScriptMessageHandler, NSWindowDelegate {
-  private static let cardWidth: CGFloat = 590
-  private var cardHeight: CGFloat = 400
-  private let prefs: PenPreferences
+  private static let cardWidth: CGFloat = 428
+  private var cardHeight: CGFloat = 224
   private let start: (String, URL?) -> Void
   private var web: WKWebView!
   init(preferences: PenPreferences, last: URL?, start: @escaping (String, URL?) -> Void) {
-    prefs = preferences
-    ChromeTheme.current = preferences.theme
     self.start = start
     let width = min(Self.cardWidth, NSScreen.main?.visibleFrame.width ?? Self.cardWidth)
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: cardHeight),
       styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
     window.title = "Gridnote"
-    window.appearance = ChromeTheme.appearance
+    window.titleVisibility = .hidden
+    window.appearance = NSAppearance(named: .darkAqua)
     window.center()
     super.init(window: window)
     window.delegate = self
     let config = WKWebViewConfiguration()
     let options: [String: Any] = [
-      "theme": prefs.theme.rawValue, "major": prefs.major, "device": prefs.deviceDescription,
+      "device": preferences.deviceDescription,
       "lastName": last?.deletingPathExtension().lastPathComponent ?? "", "hasLast": last != nil]
     if let data = try? JSONSerialization.data(withJSONObject: options),
        let json = String(data: data, encoding: .utf8) {
@@ -107,12 +93,6 @@ final class LauncherController: NSWindowController, WKScriptMessageHandler, NSWi
         height.isFinite, height > 0 else { return }
       cardHeight = CGFloat(height)
       fitCard()
-    case "theme":
-      guard let name = values["theme"], let theme = NotebookTheme(rawValue: name) else { return }
-      prefs.theme = theme
-      ChromeTheme.current = theme
-      window?.appearance = ChromeTheme.appearance
-    case "major": if let major = values["major"] { prefs.major = major }
     case "open": openDocument(nil)
     case "continue", "new": start(action, nil)
     default: break

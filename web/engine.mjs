@@ -534,6 +534,15 @@ export function validate(book) {
     if (!["ink", "text", "image"].includes(k))
       throw Error("Unknown notebook object.");
   }
+  // Store only the paper properties used by the editor, including when reopening older files.
+  const paperSettings = (p) => ({
+    ruling: rulings.includes(p?.ruling) ? p.ruling : defaultPaper.ruling,
+    tint: Object.hasOwn(tints, p?.tint) ? p.tint : defaultPaper.tint,
+  });
+  if (book.defaultPaper) book.defaultPaper = paperSettings(book.defaultPaper);
+  if (book.pagePaper) book.pagePaper = Object.fromEntries(
+    Object.entries(book.pagePaper).map(([n, p]) => [n, paperSettings(p)]),
+  );
   return book;
 }
 function clipInk(o, top, bottom) {

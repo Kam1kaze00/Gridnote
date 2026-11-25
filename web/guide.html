@@ -81,7 +81,7 @@
       use the optional AI service. Ask AI sends the displayed text and image.
       Copy to ChatGPT lets you paste them yourself.
     </p>
-    <h2>Pages and subjects</h2>
+    <h2>Managing pages</h2>
     <p>
       Open Pages in the lower left to jump to a thumbnail. Select a page and use
       the plus, move or delete buttons. Undo restores the full page and its
@@ -90,15 +90,8 @@
       blocks stay in place. Undo restores the handwriting. To remove typed notes on one page
       or all pages, use <b>Remove Typed Text</b> in the notebook menu (Edit on Mac).
     </p>
-    <p>
-      On startup, choose your major and preview its six tools. Leave Major set to None for the regular notebook.
-      Continue notebook restores your work, zoom and position. New notebook starts a fresh page.
-      Each subject tool has a button below the writing toolbar. Tap one, adjust its inputs and use Insert to place a result on the page.
-      To change your major, reopen Notebook Launcher from File on Mac or the notebook menu on the web.
-    </p>
-    <h2>Appearance and paper</h2>
-    <p>Choose a theme on the launcher or in Options. Default opens with the Drafting Desk illustration and waving pencil. Try the inked pencil of 70s Cartoon, Tokyo Neon's route signs, Cyberpunk's amber instrument panel, or Pixelated's handheld lettering. Fonts and tool icons work offline.</p>
-    <p>A new notebook starts on its theme’s stationery. In an existing notebook, open <b>Paper → Stationery</b> and choose This page or Notebook default. Grid, ruled, dotted and whiteboard paper each support the paper color you choose. Paper settings travel with the notebook and appear in its PDF.</p>
+    <h2>Paper</h2>
+    <p>Open the paper control to choose grid, ruled, dotted or whiteboard paper and a color. Apply the change to this page or use it as the notebook default. Your PDF uses the same paper.</p>
     <p>New photos and screenshots start at their natural size up to 15 cm wide and 10 cm tall. They shrink further to fit the visible writing area. The original pixels are retained for zooming and PDF export. To use more of the page, choose <b>Selection → Fit Image to Page</b>. Drag a corner to see millimetres and matching widths or heights when alignment guides are on. Undo restores the previous size.</p>
     <h2>Saving and sharing</h2>
     <p>
@@ -128,14 +121,7 @@
       adjustments. Your pages, files and position are stored separately.
     </p>
     <footer>
-      Gridnote 1.2.8 · An open-source notebook for students · MIT License
+      Gridnote 1.3.0 · An open-source notebook for students · MIT License
     </footer>
   </main>
-  <link rel="stylesheet" href="themes.css">
-  <script src="appearance.js"></script>
-  <script>
-    let name = new URLSearchParams(location.hash.slice(1)).get("theme");
-    try { name ||= JSON.parse(localStorage.getItem("gridnote-pens") || "{}").theme } catch {}
-    GridnoteAppearance.apply(name);
-  </script>
 </html>
