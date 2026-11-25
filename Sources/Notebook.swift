@@ -43,6 +43,7 @@ struct NoteObject: Codable, Equatable, Identifiable {
   var frame: CGRect
   var content: Content
   var alignment: TypeAlignment? = nil
+  var textTraits: Int?
   var instrument: String?
   var opacity: Double?
   var table: TableGrid?
@@ -77,6 +78,11 @@ struct NoteObject: Codable, Equatable, Identifiable {
     }
     if case .text(let value, let color, let size) = content {
       result.content = .text(value, color, size * scale)
+      result.table?.formats = table?.formats?.mapValues { format in
+        var copy = format
+        copy.size *= scale
+        return copy
+      }
     }
     return result
   }

@@ -54,7 +54,7 @@ final class StudySolver {
         for line in lines {
           let height = max(
             size * 1.2,
-            PaperRenderer.attributed(line, color: InkColor.colors[0].1, size: size).boundingRect(
+            NSAttributedString(string: line, attributes: o.textFormat.attributes()).boundingRect(
               with: CGSize(width: o.frame.width, height: 100000),
               options: [.usesLineFragmentOrigin, .usesFontLeading]
             ).height)

@@ -1,5 +1,31 @@
 import AppKit
 
+enum WritingTip: String, CaseIterable {
+  case pen = "Pen", brush = "Brush", fineliner = "Fineliner"
+
+  var defaultWidth: Double {
+    switch self {
+    case .pen: return 1.5
+    case .brush: return 2
+    case .fineliner: return 0.9
+    }
+  }
+}
+
+struct WritingStyle {
+  let tip: WritingTip
+  let width: Double
+  let usesPressure: Bool
+  let exponent: Double
+
+  func radius(at force: Double?) -> CGFloat {
+    guard usesPressure, tip != .fineliner, let force, force.isFinite else { return width / 2 }
+    let level = pow(min(1, max(0, force)), exponent)
+    let weight = tip == .pen ? 0.78 + 0.38 * level : 0.18 + 1.52 * level
+    return width * weight / 2
+  }
+}
+
 final class PenPreferences {
   private let defaults: UserDefaults
   init(defaults: UserDefaults = .standard) { self.defaults = defaults }
@@ -10,6 +36,9 @@ final class PenPreferences {
     connection.name.map { $0 + " · Detected" } ?? "Ready for pen or mouse"
   }
   func detectDevice(vendor: Int? = nil) { connection = InputDevice.connected(vendor: vendor) }
+  func recognizeTabletPoint() {
+    if device == .mouse { connection = (.other, "Active pen") }
+  }
   private func deviceKey(_ key: String) -> String { "Device." + device.rawValue + "." + key }
   private func deviceValue(_ key: String, fallback: Double, range: ClosedRange<Double>) -> Double {
     let legacy = device == .wacom ? value(key, fallback: fallback, range: range) : fallback
@@ -33,7 +62,10 @@ final class PenPreferences {
   func toolAppearance(_ tool: NoteTool) -> (name: String, symbol: String) {
     switch tool {
     case .brush:
-      return (nib, nib == "Brush" ? "paintbrush.pointed" : nib == "Fineliner" ? "pencil.line" : "pencil.tip")
+      return (
+        nib.rawValue,
+        nib == .brush ? "paintbrush.pointed" : nib == .fineliner ? "pencil.line" : "pencil.tip"
+      )
     case .selector:
       return (selectionMode.rawValue, [.tap: "cursorarrow", .box: "rectangle.dashed", .lasso: "lasso"][selectionMode]!)
     case .eraser:
@@ -50,7 +82,7 @@ final class PenPreferences {
 
   func illustration(_ tool: NoteTool) -> String {
     switch tool {
-    case .brush: return nib.lowercased()
+    case .brush: return nib.rawValue.lowercased()
     case .selector: return [.tap: "tap", .box: "box-select", .lasso: "lasso"][selectionMode]!
     case .eraser: return [.regular: "regular", .stroke: "stroke", .box: "region-erase", .lasso: "lasso-erase"][eraseMode]!
     case .text: return code ? "code" : [.natural: "text", .left: "left", .center: "center", .right: "right"][textAlignment]!
@@ -77,18 +109,20 @@ final class PenPreferences {
     }
     set { if Self.majors.contains(newValue) { defaults.set(newValue, forKey: "StudyMajor") } }
   }
-  var nib: String {
-    get { defaults.string(forKey: deviceKey("Nib")) ?? "Brush" }
-    set { defaults.set(newValue, forKey: deviceKey("Nib")) }
+  private var legacyTip: WritingTip {
+    WritingTip(rawValue: defaults.string(forKey: deviceKey("Nib")) ?? "") ?? .brush
+  }
+  var nib: WritingTip {
+    get { WritingTip(rawValue: defaults.string(forKey: "WritingTip") ?? "") ?? legacyTip }
+    set { defaults.set(newValue.rawValue, forKey: "WritingTip") }
   }
   var usePressure: Bool {
     get { defaults.object(forKey: deviceKey("UsePressure")) as? Bool ?? true }
     set { defaults.set(newValue, forKey: deviceKey("UsePressure")) }
   }
-  func response(to force: Double) -> Double {
-    guard device.pressure, usePressure, nib != "Fineliner" else { return 1 }
-    let level = pow(min(1, max(0, force)), pressure)
-    return nib == "Pen" ? 0.72 + 0.55 * level : 0.30 + 1.30 * level
+  var writingStyle: WritingStyle {
+    WritingStyle(
+      tip: nib, width: width, usesPressure: usePressure && device.pressure, exponent: pressure)
   }
   func restore(_ tool: NoteTool? = nil) {
     let scoped: [NoteTool: [String]] = [
@@ -96,11 +130,15 @@ final class PenPreferences {
       .eraser: ["EraserDiameter"],
     ]
     let common: [NoteTool: [String]] = [
-      .brush: ["InkColor"], .selector: ["SelectionMode", "SelectionMask", "AlignmentGuides"],
-      .eraser: ["EraseMode"], .text: ["TextSize", "TextAlignment", "TextColor", "CodeBlocks"],
+      .brush: ["InkColor", "WritingTip"] + WritingTip.allCases.map { "Width." + $0.rawValue },
+      .selector: ["SelectionMode", "SelectionMask", "AlignmentGuides"],
+      .eraser: ["EraseMode"],
+      .text: ["TextSize", "TextAlignment", "TextColor", "CodeBlocks", "TextTraits"],
       .marker: ["MarkerWidth", "MarkerOpacity", "MarkerColor"],
       .shapes: ["ShapeWidth", "Shape", "ConstrainShape"],
-      .table: ["TableRows", "TableColumns", "TableHeader", "TableWidth", "TableHeight"],
+      .table: [
+        "TableRows", "TableColumns", "TableHeader", "TableWidth", "TableHeight", "TableTextFormat",
+      ]
     ]
     let profiles = tool == nil ? InputDevice.allCases : [device]
     for t in tool.map({ [$0] }) ?? NoteTool.allCases {
@@ -128,8 +166,14 @@ final class PenPreferences {
     set { defaults.set(newValue, forKey: deviceKey("Pressure")) }
   }
   var width: Double {
-    get { deviceValue("BrushWidth", fallback: 2.0, range: 0.7...6) }
-    set { defaults.set(newValue, forKey: deviceKey("BrushWidth")) }
+    get {
+      let tip = nib
+      let fallback =
+        tip == legacyTip
+        ? deviceValue("BrushWidth", fallback: tip.defaultWidth, range: 0.7...6) : tip.defaultWidth
+      return value("Width." + tip.rawValue, fallback: fallback, range: 0.7...6)
+    }
+    set { defaults.set(newValue, forKey: "Width." + nib.rawValue) }
   }
   var scrollSpeed: Double {
     get { deviceValue("PenScrollSpeed", fallback: 0.30, range: 0.12...0.65) }
@@ -154,6 +198,30 @@ final class PenPreferences {
   var textColor: Int {
     get { min(InkColor.colors.count - 1, max(0, defaults.integer(forKey: "TextColor"))) }
     set { defaults.set(newValue, forKey: "TextColor") }
+  }
+  var labelFormat: NotebookTextFormat {
+    get {
+      .init(
+        size: textSize, color: InkColor.colors[textColor].1, alignment: textAlignment,
+        traits: defaults.integer(forKey: "TextTraits"))
+    }
+    set {
+      textSize = newValue.size
+      textAlignment = newValue.alignment
+      if let i = InkColor.colors.firstIndex(where: { $0.1 == newValue.color }) { textColor = i }
+      defaults.set(newValue.traits, forKey: "TextTraits")
+    }
+  }
+  var tableFormat: NotebookTextFormat {
+    get {
+      if let data = defaults.data(forKey: "TableTextFormat"),
+        let format = try? JSONDecoder().decode(NotebookTextFormat.self, from: data)
+      {
+        return format
+      }
+      return .init(size: 11)
+    }
+    set { defaults.set(try? JSONEncoder().encode(newValue), forKey: "TableTextFormat") }
   }
   var eraseMode: EraseMode {
     get { EraseMode(rawValue: defaults.string(forKey: "EraseMode") ?? "") ?? .stroke }
@@ -230,7 +298,16 @@ final class PenPreferences {
   }
 }
 
-enum NoteTool: String, CaseIterable { case brush, selector, eraser, text, marker, shapes, table }
+enum NoteTool: String, CaseIterable {
+  case brush, selector, eraser, text, marker, shapes, table
+  var title: String {
+    switch self {
+    case .brush: return "Writer"
+    case .marker: return "Highlighter"
+    default: return rawValue.capitalized
+    }
+  }
+}
 enum SelectMode: String, CaseIterable {
   case tap = "Tap"
   case box = "Rectangle"
@@ -299,6 +376,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   }
   private var ink: [InkPoint] = []
   private var inkColor: InkColor?
+  private var strokeStyle = WritingStyle(tip: .brush, width: 2, usesPressure: true, exponent: 1)
   private var inkSmoothing: CGFloat = 0
   private var inkTimes: [TimeInterval] = []
   private var draftID = UUID()
@@ -308,11 +386,14 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private var inkBounds = CGRect.null
   private var lastErase: CGPoint?
   private var gestureOrigin: CGPoint?
+  private var tapText: NoteObject?
+  private(set) var formatCell: Int?
   private var originalObjects: [NoteObject]?
   private var transformBounds: CGRect?
   private var transformMode: TransformMode?
   private var marquee: [CGPoint] = []
   private var originalSelection = Set<UUID>()
+  private var additiveSelection = false
   private var editing: TextEdit?
   private var cellEdit: (object: NoteObject, index: Int)?
   private var drawingBlock = false
@@ -436,7 +517,13 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   }
 
   func chooseTool(_ next: NoteTool) {
+    let cell = cellEdit?.index
+    let id = editing?.object.id
     finishText()
+    if next == .text, let id, notebook.objects.contains(where: { $0.id == id }) {
+      setSelection([id])
+    }
+    formatCell = next == .text ? cell : nil
     finishGesture()
     buttons.eraserArmed = false
     buttons.eraserContact = false
@@ -577,26 +664,28 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
 
   private func sample(_ event: NSEvent, point: CGPoint, usingLastPressure: Bool = false) -> InkPoint
   {
-    let tabletPressure: Float?
-    if usingLastPressure || !preferences.device.pressure {
-      tabletPressure = nil
-    } else if event.isTabletSample {
-      tabletPressure = event.pressure
-    } else if let last = lastTabletInput, last.tip, event.timestamp - last.timestamp < 0.15,
-      event.locationInWindow.distance(to: last.location) < 20
-    {
-      tabletPressure = last.pressure
-    } else {
-      tabletPressure = nil
+    var force: Double?
+    if !usingLastPressure {
+      if event.isTabletSample {
+        force = Double(event.tipPressure)
+      } else if let last = lastTabletInput, last.tip,
+        (0...0.15).contains(event.timestamp - last.timestamp),
+        event.locationInWindow.distance(to: last.location) < 20
+      {
+        force = Double(last.pressure)
+      } else if penInProximity && event.pressure > 0 && event.pressure < 1 {
+        force = Double(event.pressure)
+      }
     }
-    var radius = preferences.width * 0.5
-    if let tabletPressure {
-      radius *= preferences.response(to: Double(tabletPressure))
-      if let last = ink.last { radius = radius * 0.68 + last.radius * 0.32 }
-    } else if usingLastPressure, let last = ink.last {
-      radius = last.radius
+    var radius = strokeStyle.radius(at: force)
+    if let last = ink.last {
+      if force == nil {
+        radius = last.radius
+      } else if let time = inkTimes.last {
+        let dt = max(0.001, event.timestamp - time)
+        radius += (last.radius - radius) * exp(-dt / 0.005)
+      }
     }
-    if tool == .marker { radius = preferences.markerWidth / 2 }
     let clamped = CGPoint(
       x: min(paperSize.width - radius, max(radius, point.x)),
       y: min(bounds.height - radius, max(radius, point.y)))
@@ -607,10 +696,12 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     guard inkColor != nil else { return }
     let point = sample(event, point: location, usingLastPressure: isLift)
     if let previous = ink.last, point.position.distance(to: previous.position) < 0.12 {
-      if ink.count == 1, abs(point.radius - previous.radius) > 0.06 {
-        ink[0].radius = max(previous.radius, point.radius)
-        inkBounds = inkBounds.union(ink[0].bounds)
-        invalidate(inkBounds)
+      if !isLift && abs(point.radius - previous.radius) > 0.005 {
+        let index = ink.count - 1
+        ink[index].radius = index == 0 ? max(previous.radius, point.radius) : point.radius
+        inkTimes[index] = event.timestamp
+        inkBounds = inkBounds.union(ink[index].bounds)
+        invalidate(previous.bounds.union(ink[index].bounds).union(ink[max(0, index - 1)].bounds))
       }
       return
     }
@@ -648,6 +739,11 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       draftID = UUID()
       lastCheckpoint = event.timestamp
       inkColor = tool == .marker ? markerColors[preferences.markerIndex].1 : currentColor
+      strokeStyle =
+        tool == .marker
+        ? WritingStyle(
+          tip: .fineliner, width: preferences.markerWidth, usesPressure: false, exponent: 1)
+        : preferences.writingStyle
       inkSmoothing = preferences.smoothing
       appendInk(event, location: point)
     case .eraser:
@@ -662,7 +758,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     case .text:
       gestureOrigin = nil
       let existing = object(at: point).flatMap { o -> NoteObject? in
-        if case .text = o.content, o.table == nil { return o }
+        if case .text = o.content { return o }
         return nil
       }
       startText(at: point, existing: existing)
@@ -702,18 +798,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     tipIsDown = false
     if !buttons.scrolling, !ignoredTip {
       let point = convert(event.locationInWindow, from: nil)
-      if drawingBlock {
-        updateBlock(to: point, shift: event.modifierFlags.contains(.shift))
-      } else if inkColor != nil {
-        appendInk(event, location: point, isLift: true)
-      } else if lastErase != nil {
-        erase(to: point)
-      } else if transformMode != nil {
-        transformSelection(to: point)
-      } else if !marquee.isEmpty {
-        endSelection(at: point)
-      }
-      finishGesture()
+      finishContact(at: point, event: event)
     }
     ignoredTip = false
     returnToBrushAfterLift()
@@ -724,6 +809,29 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       buttons.eraserContact = false
       buttons.eraserArmed = false
       tool = .brush
+    }
+  }
+
+  func finishContact(at point: CGPoint, event: NSEvent) {
+    if drawingBlock {
+      updateBlock(to: point, shift: event.modifierFlags.contains(.shift))
+    } else if inkColor != nil {
+      appendInk(event, location: point, isLift: true)
+    } else if lastErase != nil {
+      erase(to: point)
+    } else if transformMode != nil {
+      transformSelection(to: point)
+    } else if !marquee.isEmpty {
+      endSelection(at: point)
+    }
+    let target = tapText
+    finishGesture()
+    if let target {
+      startText(at: point, existing: target)
+      if let view = editor {
+        let caret = view.characterIndexForInsertion(at: view.convert(point, from: self))
+        view.setSelectedRange(NSRange(location: min(view.string.utf16.count, caret), length: 0))
+      }
     }
   }
 
@@ -742,7 +850,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       }
     } else if let object = draftInk() {
       didChange(
-        from: notebook.objects, to: notebook.objects + [object], name: "Brush Stroke",
+        from: notebook.objects, to: notebook.objects + [object],
+        name: tool == .marker ? "Highlight" : "Handwriting",
         redraw: object.frame)
     } else if let originalObjects {
       didChange(
@@ -763,6 +872,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     guideTargets = []
     transformMode = nil
     gestureOrigin = nil
+    tapText = nil
     invalidate(rectAround(marquee), padding: selectionPadding + 8)
     marquee.removeAll(keepingCapacity: true)
     erasingRegion = false
@@ -813,6 +923,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
 
   private func startSelection(at point: CGPoint, event: NSEvent) {
     let shift = event.modifierFlags.contains(.shift)
+    additiveSelection = shift
     if !shift, let bounds = selectedBounds {
       let handles = corners(of: bounds.insetBy(dx: -selectionPadding, dy: -selectionPadding))
       if let index = handles.firstIndex(where: { $0.distance(to: point) <= 8 / max(0.1, scale) }) {
@@ -820,23 +931,19 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         return
       }
       if bounds.insetBy(dx: -selectionPadding, dy: -selectionPadding).contains(point) {
-        if event.isPointerEvent, event.clickCount >= 2, let hit = object(at: point),
+        if selection.count == 1, let hit = object(at: point), selection.contains(hit.id),
           case .text = hit.content
         {
-          startText(at: point, existing: hit)
-        } else {
-          startTransform(bounds: bounds, mode: .move)
+          tapText = hit
         }
+        startTransform(bounds: bounds, mode: .move)
         return
       }
     }
     if !shift, selectMode == .tap, let hit = object(at: point) {
       setSelection([hit.id])
-      if event.isPointerEvent, event.clickCount >= 2, case .text = hit.content {
-        startText(at: point, existing: hit)
-      } else {
-        startTransform(bounds: hit.frame, mode: .move)
-      }
+      if case .text = hit.content { tapText = hit }
+      startTransform(bounds: hit.frame, mode: .move)
       return
     }
     originalSelection = shift ? selection : []
@@ -862,6 +969,10 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     guard let before = originalObjects, let mode = transformMode, let bounds = transformBounds,
       let start = gestureOrigin
     else { return }
+    if tapText != nil {
+      guard start.distance(to: point) * scale > 4 else { return }
+      tapText = nil
+    }
     let oldBounds = selectedBounds ?? bounds
     let anchor: CGPoint
     let multiplier: CGFloat
@@ -970,6 +1081,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         var ids = originalSelection
         if ids.remove(hit.id) == nil { ids.insert(hit.id) }
         setSelection(ids)
+        if !additiveSelection, case .text = hit.content { tapText = hit }
       } else {
         setSelection(originalSelection)
       }
@@ -987,6 +1099,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   func setSelection(_ ids: Set<UUID>) {
     if let bounds = selectedBounds { invalidate(bounds, padding: selectionPadding + 8) }
     selection = ids
+    formatCell = nil
     updateCodeButton()
     positionDidChange?()
     toolDidChange?()
@@ -1272,15 +1385,15 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     let width = min(290, paperSize.width - x - 4)
     let size = preferences.textSize
     let color = InkColor.colors[preferences.textColor].1
-    let string = PaperRenderer.attributed(
-      text, color: color, size: size, alignment: preferences.textAlignment)
+    let string = NSAttributedString(string: text, attributes: preferences.labelFormat.attributes())
     let height = string.boundingRect(
       with: CGSize(width: width, height: 100_000),
       options: [.usesLineFragmentOrigin, .usesFontLeading]
     ).height
     let frame = CGRect(x: x, y: max(0, point.y), width: width, height: max(24, ceil(height) + 7))
     return NoteObject(
-      frame: frame, content: .text(text, color, size), alignment: preferences.textAlignment)
+      frame: frame, content: .text(text, color, size), alignment: preferences.textAlignment,
+      textTraits: preferences.labelFormat.traits)
   }
 
   private func startText(at point: CGPoint, existing: NoteObject? = nil) {
@@ -1290,8 +1403,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       beginCell(at: point, object: object)
       return
     }
-    guard case .text(let text, let color, let size) = object.content else { return }
-    setSelection([])
+    guard case .text(let text, let color, _) = object.content else { return }
+    setSelection(existing != nil && tool == .selector ? [object.id] : [])
     textHistory.removeAllActions()
     let textView = NSTextView(frame: object.frame)
     textView.appearance = NSAppearance(named: .aqua)
@@ -1309,9 +1422,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     textView.textContainer?.widthTracksTextView = true
     textView.textContainer?.heightTracksTextView = false
     textView.textContainer?.containerSize = CGSize(width: object.frame.width, height: 100_000)
-    textView.font =
-      object.codeStyle == nil
-      ? .systemFont(ofSize: size) : .monospacedSystemFont(ofSize: size, weight: .regular)
+    textView.font = object.textFormat.attributes(code: object.codeStyle != nil)[.font] as? NSFont
     textView.textColor = color.ns
     textView.backgroundColor = NSColor(srgbRed: 0.994, green: 1, blue: 0.994, alpha: 1)
     textView.insertionPointColor = .black
@@ -1321,11 +1432,17 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     style.alignment = (object.alignment ?? .natural).value
     textView.defaultParagraphStyle = style
     textView.alignment = style.alignment
-    textView.typingAttributes = [
-      .font: textView.font!, .foregroundColor: color.ns, .paragraphStyle: style,
-    ]
+    var attributes = object.textFormat.attributes()
+    attributes[.font] = textView.font!
+    if textView.string.utf16.count > 0 {
+      textView.textStorage?.setAttributes(
+        attributes, range: NSRange(location: 0, length: textView.string.utf16.count))
+    }
+    textView.typingAttributes = attributes
     textView.delegate = self
-    if let style = object.codeStyle { tintEditor(textView, size: size, enabled: style) }
+    if let style = object.codeStyle {
+      tintEditor(textView, format: object.textFormat, enabled: style)
+    }
     textView.setAccessibilityLabel("Notebook text")
     textView.wantsLayer = true
     textView.layer?.borderWidth = 0.65
@@ -1403,9 +1520,9 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     return copy
   }
 
-  private func tintEditor(_ view: NSTextView, size: CGFloat, enabled: Bool) {
+  private func tintEditor(_ view: NSTextView, format: NotebookTextFormat, enabled: Bool) {
     guard let manager = view.layoutManager else { return }
-    let value = CodeFormat.attributed(view.string, size: size, highlighted: enabled)
+    let value = CodeFormat.attributed(view.string, format: format, highlighted: enabled)
     let range = NSRange(location: 0, length: value.length)
     manager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
     value.enumerateAttribute(.foregroundColor, in: range) { color, r, _ in
@@ -1418,8 +1535,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   func textDidChange(_ notification: Notification) {
     guard let editing else { return }
     let view = editing.view
-    if let style = editing.object.codeStyle, case .text(_, _, let size) = editing.object.content {
-      tintEditor(view, size: size, enabled: style)
+    if let style = editing.object.codeStyle {
+      tintEditor(view, format: editing.object.textFormat, enabled: style)
     }
     if cellEdit == nil, let container = view.textContainer, let layout = view.layoutManager {
       layout.ensureLayout(for: container)
@@ -1526,10 +1643,86 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       f.size.width = min(paperSize.width, max(36, f.width))
       f.size.height = min(paperSize.height, max(18, f.height))
       f.origin.x = max(0, min(paperSize.width - f.width, f.minX))
-      blockPreview = NoteObject(
-        frame: f, content: .text("", InkColor.colors[0].1, 11), table: preferences.grid)
+      blockPreview = newTable(frame: f, grid: preferences.grid)
     }
     if let next = blockPreview { invalidate(next.frame) }
+  }
+  private func newTable(frame: CGRect, grid: TableGrid) -> NoteObject {
+    let format = preferences.tableFormat
+    return NoteObject(
+      frame: frame, content: .text("", format.color, format.size),
+      alignment: format.alignment, textTraits: format.traits, table: grid)
+  }
+
+  func insertGrid(rows: Int, columns: Int) {
+    let grid = TableGrid(
+      rows: rows, columns: columns, header: selectedObject?.table?.header ?? preferences.grid.header
+    )
+    preferences.grid = grid
+    let size = CGSize(
+      width: min(paperSize.width - 8, CGFloat(columns) * 72), height: CGFloat(rows) * 28)
+    var origin = insertionOrigin
+    origin.x = min(origin.x, paperSize.width - size.width)
+    insert([newTable(frame: CGRect(origin: origin, size: size), grid: grid)], name: "Insert Table")
+  }
+
+  func formatTarget(table: Bool) -> NoteObject? {
+    guard let object = selectedObject, case .text = object.content else { return nil }
+    return table
+      ? (object.table == nil ? nil : object)
+      : (object.table == nil || formatCell != nil ? object : nil)
+  }
+  func currentFormat(table: Bool) -> NotebookTextFormat {
+    if !table, let editing { return editing.object.textFormat }
+    guard let object = formatTarget(table: table) else {
+      return table ? preferences.tableFormat : preferences.labelFormat
+    }
+    if !table, let i = formatCell, let grid = object.table {
+      return grid.formats?[grid.key(i)] ?? object.textFormat
+    }
+    return object.textFormat
+  }
+  func changeFormat(table: Bool, _ edit: (inout NotebookTextFormat) -> Void) {
+    var style = currentFormat(table: table)
+    edit(&style)
+    guard var object = formatTarget(table: table),
+      let i = notebook.objects.firstIndex(where: { $0.id == object.id })
+    else {
+      if table { preferences.tableFormat = style } else { preferences.labelFormat = style }
+      return
+    }
+    if !table, let cell = formatCell, var grid = object.table {
+      if grid.formats == nil { grid.formats = [:] }
+      let key = grid.key(cell)
+      grid.formats?[key] = style
+      object.table = grid
+    } else {
+      object.textFormat = style
+      if let overrides = object.table?.formats {
+        object.table?.formats = overrides.mapValues {
+          var f = $0; edit(&f); return f
+        }
+      }
+      if object.table == nil, object.layoutFrame == nil,
+        case .text(let value, _, _) = object.content
+      {
+        if object.codeStyle != nil {
+          sizeCode(&object)
+        } else {
+          let string = NSAttributedString(string: value, attributes: style.attributes())
+          object.frame.size.height = max(
+            24,
+            ceil(
+              string.boundingRect(
+                with: CGSize(width: object.frame.width, height: 100000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+              ).height) + 7)
+        }
+      }
+    }
+    var next = notebook.objects
+    next[i] = object
+    didChange(from: notebook.objects, to: next, name: "Format Text")
   }
   func configureTable(rows: Int, columns: Int, header: Bool, size: CGSize) {
     preferences.grid = TableGrid(rows: rows, columns: columns, header: header)
@@ -1548,7 +1741,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     didChange(from: notebook.objects, to: next, name: "Change Table")
   }
   private func beginCell(at point: CGPoint, object: NoteObject, index: Int? = nil) {
-    guard let grid = object.table, case .text(_, let color, let size) = object.content else {
+    guard let grid = object.table else {
       return
     }
     let layout = object.layoutFrame ?? object.frame
@@ -1559,10 +1752,23 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     else { return }
     let f = grid.cell(i, in: layout).intersection(object.frame).insetBy(dx: 2, dy: 1)
     guard f.width > 0 && f.height > 0 else { return }
+    let style = grid.formats?[grid.key(i)] ?? object.textFormat
     let proxy = NoteObject(
-      id: object.id, frame: f, content: .text(grid.cells[i], color, min(size, f.height * 0.64)))
+      id: object.id, frame: f,
+      content: .text(
+        grid.cells[i], style.color, min(style.size, grid.cell(i, in: layout).height * 0.64)),
+      alignment: style.alignment,
+      textTraits: style.traits | (grid.header && i < grid.columns ? 1 : 0))
     cellEdit = (object, i)
     startText(at: f.origin, existing: proxy)
+  }
+  @discardableResult func advanceCell(backward: Bool) -> Bool {
+    guard let cell = cellEdit else { return false }
+    finishText()
+    guard let object = selectedObject, let grid = object.table else { return true }
+    let index = cell.index + (backward ? -1 : 1)
+    if grid.cells.indices.contains(index) { beginCell(at: .zero, object: object, index: index) }
+    return true
   }
   private func sizeCode(_ o: inout NoteObject) {
     if o.codeStyle == nil, o.table == nil, case .text(let value, let color, let size) = o.content {
@@ -1572,8 +1778,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         o.content = .text(source, color, size)
       }
     }
-    guard let style = o.codeStyle, case .text(let value, _, let size) = o.content else { return }
-    let h = CodeFormat.attributed(value, size: size, highlighted: style).boundingRect(
+    guard let style = o.codeStyle, case .text(let value, _, _) = o.content else { return }
+    let h = CodeFormat.attributed(value, format: o.textFormat, highlighted: style).boundingRect(
       with: CGSize(width: max(1, o.frame.width - 10), height: 100000),
       options: [.usesLineFragmentOrigin, .usesFontLeading]
     ).height
@@ -1596,6 +1802,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     codeButton = b
   }
   @objc private func toggleCodeStyle(_ sender: Any?) {
+    finishText()
     guard let o = selectedObject, let style = o.codeStyle,
       let i = notebook.objects.firstIndex(where: { $0.id == o.id })
     else { return }

@@ -138,7 +138,7 @@ final class GridnoteDelegate: NSObject, NSApplicationDelegate {
 
     let tools = submenu("Tools")
     add(tools, "Choose Major…", #selector(owner.notebookLauncher(_:)), target: owner)
-    add(tools, "Brush", #selector(owner.brushTool(_:)), target: owner)
+    add(tools, NoteTool.brush.title, #selector(owner.brushTool(_:)), target: owner)
     add(tools, "Selector", #selector(owner.selectorTool(_:)), target: owner)
     add(tools, "Eraser", #selector(owner.eraserTool(_:)), target: owner)
     add(tools, "Highlighter", #selector(owner.markerTool(_:)), target: owner)

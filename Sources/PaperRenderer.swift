@@ -179,21 +179,21 @@ final class PaperRenderer {
       context.interpolationQuality = .high
       context.draw(image, in: CGRect(origin: .zero, size: layout.size))
       context.restoreGState()
-    case .text(let value, let color, let size):
+    case .text(let value, _, _):
       context.saveGState()
       context.clip(to: object.frame)
       NSGraphicsContext.saveGraphicsState()
       NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
       let layout = object.layoutFrame ?? object.frame
       if let grid = object.table {
-        drawTable(grid, in: layout, size: size, context: context)
+        drawTable(grid, in: layout, format: object.textFormat, context: context)
       } else if let highlight = object.codeStyle {
         context.setFillColor(CGColor(gray: 0.965, alpha: 1))
         context.fill(layout)
-        CodeFormat.attributed(value, size: size, highlighted: highlight).draw(
+        CodeFormat.attributed(value, format: object.textFormat, highlighted: highlight).draw(
           with: layout.insetBy(dx: 5, dy: 3), options: [.usesLineFragmentOrigin, .usesFontLeading])
       } else {
-        Self.attributed(value, color: color, size: size, alignment: object.alignment ?? .natural)
+        NSAttributedString(string: value, attributes: object.textFormat.attributes())
           .draw(with: layout, options: [.usesLineFragmentOrigin, .usesFontLeading])
       }
       NSGraphicsContext.restoreGraphicsState()
@@ -201,7 +201,9 @@ final class PaperRenderer {
     }
   }
 
-  private func drawTable(_ grid: TableGrid, in f: CGRect, size: CGFloat, context: CGContext) {
+  private func drawTable(
+    _ grid: TableGrid, in f: CGRect, format: NotebookTextFormat, context: CGContext
+  ) {
     guard grid.rows > 0, grid.columns > 0 else { return }
     context.setFillColor(CGColor(gray: 1, alpha: 0.95))
     context.fill(f)
@@ -215,12 +217,11 @@ final class PaperRenderer {
       context.setStrokeColor(CGColor(red: 0.42, green: 0.51, blue: 0.53, alpha: 1))
       context.setLineWidth(0.55)
       context.stroke(cell)
-      let font = NSFont.systemFont(
-        ofSize: min(size, cell.height * 0.64), weight: header ? .semibold : .regular)
-      NSAttributedString(
-        string: grid.cells[i], attributes: [.font: font, .foregroundColor: InkColor.colors[0].1.ns]
-      ).draw(
-        with: cell.insetBy(dx: 3, dy: 2), options: [.usesLineFragmentOrigin, .usesFontLeading])
+      var style = grid.formats?[grid.key(i)] ?? format
+      style.size = min(style.size, cell.height * 0.64)
+      NSAttributedString(string: grid.cells[i], attributes: style.attributes(header: header))
+        .draw(
+          with: cell.insetBy(dx: 3, dy: 2), options: [.usesLineFragmentOrigin, .usesFontLeading])
     }
   }
 
@@ -321,18 +322,6 @@ final class PaperRenderer {
     }
     context.closePDF()
     return output as Data
-  }
-
-  static func attributed(
-    _ text: String, color: InkColor, size: CGFloat, alignment: TypeAlignment = .natural
-  ) -> NSAttributedString {
-    let style = NSMutableParagraphStyle()
-    style.alignment = alignment.value
-    return NSAttributedString(
-      string: text,
-      attributes: [
-        .font: NSFont.systemFont(ofSize: size), .foregroundColor: color.ns, .paragraphStyle: style,
-      ])
   }
 
   static func decode(_ data: Data) -> CGImage? {

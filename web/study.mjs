@@ -7,7 +7,7 @@ import {
   pdfLines,
 } from "./study-geometry.mjs";
 import { W, H, kind, overlaps, groupRect } from "./engine.mjs";
-import { cellFrame } from "./blocks.mjs";
+import { cellFrame, textFormat, fontFor } from "./blocks.mjs";
 import {
   imageOf,
   paintObject,
@@ -56,7 +56,7 @@ export async function scanProblems(book, source, page) {
       continue;
     }
     const [[x, y], [w]] = o.layoutFrame || o.frame;
-    ctx.font = size + "px Arial";
+    ctx.font = fontFor(textFormat(o));
     let offset = 0;
     for (const line of value.split("\n")) {
       const height = Math.max(1, textLines(ctx, line, w).length) * size * 1.2;

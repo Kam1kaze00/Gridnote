@@ -785,3 +785,52 @@ body.launching > header,body.launching > nav,body.launching #stage,body.launchin
 
 #tools{overflow-x:auto;scrollbar-width:thin}
 #toolset,#tools>button,#inks{flex-shrink:0}
+
+#popover .type-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#popover .type-controls small {
+  flex: 1;
+}
+#popover .type-controls select {
+  min-width: 0;
+  width: auto;
+}
+#popover .insert-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+#popover .insert-grid button {
+  min-width: 0;
+  min-height: 0;
+  height: 20px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.65;
+}
+#popover .insert-grid button.lit {
+  background: var(--accent);
+  opacity: 1;
+}
+#popover .choices button[aria-label="Bold"] {
+  font-weight: bold;
+}
+#popover .choices button[aria-label="Italic"] {
+  font-style: italic;
+}
+#popover .choices button[aria-label="Underline"] {
+  text-decoration: underline;
+}
+#popover .choices button[aria-pressed="true"] {
+  outline: 1px solid currentColor;
+  outline-offset: -2px;
+}
+@media (pointer: coarse) {
+  #popover .insert-grid button {
+    height: 26px;
+  }
+}
