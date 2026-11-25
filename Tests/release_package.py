@@ -55,7 +55,9 @@ def check_desktop(packages, folder, system, machine):
     with ZipFile(packages / f"Gridnote-{system}-{arch}.zip") as archive:
         app = Path(archive.extract(filename, folder))
     app.chmod(0o755)
-    with subprocess.Popen([app, "--no-open"], env=dict(os.environ, XDG_CONFIG_HOME=str(folder), LOCALAPPDATA=str(folder))) as started:
+    config = folder / "user-config"
+    config.mkdir()
+    with subprocess.Popen([app, "--no-open"], env=dict(os.environ, XDG_CONFIG_HOME=str(config), LOCALAPPDATA=str(config))) as started:
         try:
             origin = "http://127.0.0.1:48765/"
             for _ in range(80):
