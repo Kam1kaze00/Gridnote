@@ -32,19 +32,20 @@ struct WritingStyle {
     guard usesPressure, tip != .fineliner else { return width / 2 }
     if lift, let previous {
       guard tip == .brush, distance >= 0.12 else { return previous }
-      return max(radius(at: 0), previous * exp(-distance / max(1, width)))
+      return max(radius(at: 0), previous * exp(-distance / max(1, CGFloat(width))))
     }
     let dt = max(0.001, elapsed)
     var contact = force
     if contact == nil && tip == .brush && !stylus {
       // A mouse has no load sensor. A slow pull spreads the brush, a flick narrows it.
-      contact = previous == nil ? 0.42 : 0.22 + 0.54 / (1 + distance / (dt * 230))
+      let speed = Double(distance) / dt
+      contact = previous == nil ? 0.42 : 0.22 + 0.54 / (1 + speed / 230)
     }
     guard contact != nil else { return previous ?? width / 2 }
     let target = radius(at: contact)
     guard let previous else { return target }
     let response = tip == .brush && target > previous ? 0.011 : 0.0035
-    return target + (previous - target) * exp(-dt / response)
+    return target + (previous - target) * CGFloat(exp(-dt / response))
   }
 }
 

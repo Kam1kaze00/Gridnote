@@ -434,7 +434,7 @@ private final class BrushSample: NSView {
     for i in 0...100 {
       let t = CGFloat(i) / 100
       let y = 15 + sin(t * 3 * .pi) * 7
-      let force = 0.04 + 0.94 * pow(sin(.pi * t), 2)
+      let force = 0.04 + 0.94 * pow(sin(Double.pi * Double(t)), 2)
       let position = CGPoint(x: 12 + t * (bounds.width - 24), y: y)
       let radius = style.sampledRadius(
         force: preferences.device.pressure ? force : nil, previous: previous,
