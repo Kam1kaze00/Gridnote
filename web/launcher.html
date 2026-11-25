@@ -10,11 +10,24 @@
       html,
       body {
         margin: 0;
-        height: 100%;
         background: #181f24;
       }
-      main {
-        min-height: 100%;
+      #launcher {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        padding: 0;
+        overflow: hidden auto;
+      }
+      #launcher .start-card {
+        box-sizing: border-box;
+        /* Keep the layout stable while WebKit briefly shows a scrollbar during a resize. */
+        width: 100vw;
+        max-width: none;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
       }
     </style>
   </head>
@@ -26,13 +39,21 @@
     <script>
       const bridge = window.webkit?.messageHandlers?.gridnoteLauncher;
       if (!bridge) location.replace("./");
-      else
+      else {
         GridnoteLauncher.mount(document.getElementById("launcher"), {
           ...window.launchOptions,
           changeTheme: (theme) => bridge.postMessage({ action: "theme", theme }),
           change: (major) => bridge.postMessage({ action: "major", major }),
           start: (action) => bridge.postMessage({ action }),
         });
+        const card = document.querySelector(".start-card");
+        new ResizeObserver(() => {
+          bridge.postMessage({
+            action: "fit",
+            height: String(Math.ceil(card.getBoundingClientRect().height)),
+          });
+        }).observe(card);
+      }
     </script>
   </body>
 </html>

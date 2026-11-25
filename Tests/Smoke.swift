@@ -94,6 +94,32 @@ import WebKit
     launchWeb.evaluateJavaScript("(() => {const s = document.querySelector('#welcome-theme'); s.value='70s Cartoon'; s.dispatchEvent(new Event('change'));})()")
     for _ in 0..<100 where !preferences.cartoonTheme { pump(0.06) }
     expect(preferences.cartoonTheme, "Mac launcher applies the selected artwork and persists its theme")
+    for theme in NotebookTheme.allCases {
+      for major in ["None", "Electrical Engineering"] {
+        let choose = """
+          for (const [id, value] of [["welcome-theme", "\(theme.rawValue)"], ["welcome-major", "\(major)"]]) {
+            const picker = document.getElementById(id);
+            picker.value = value;
+            picker.dispatchEvent(new Event("change"));
+          }
+          """
+        launchWeb.evaluateJavaScript(choose)
+        var fits = false
+        for _ in 0..<50 where !fits {
+          pump(0.04)
+          launchWeb.evaluateJavaScript("""
+            (() => {
+              const card = document.querySelector(".start-card").getBoundingClientRect();
+              return document.getElementById("welcome-theme").value === "\(theme.rawValue)"
+                && document.getElementById("welcome-major").value === "\(major)"
+                && card.x === 0 && card.y === 0 && Math.abs(card.width - innerWidth) < 1
+                && Math.abs(card.height - innerHeight) <= 1;
+            })()
+            """) { result, _ in fits = result as? Bool == true }
+        }
+        expect(fits, "Mac launcher window fits its card in " + theme.rawValue + " with " + major)
+      }
+    }
     launchWeb.evaluateJavaScript("document.querySelector('#continue').click()")
     for _ in 0..<100 where launchAction.isEmpty { pump(0.06) }
     expect(launchAction == "continue", "standalone Mac launcher continues only on request")
