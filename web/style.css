@@ -238,6 +238,9 @@ select {
   gap: 3px;
   margin-top: 15px;
 }
+#offline-status {
+  color: var(--muted);
+}
 #view {
   position: absolute;
   inset: 0;

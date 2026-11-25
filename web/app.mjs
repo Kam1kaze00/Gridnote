@@ -2196,7 +2196,10 @@ function paperMenu() {
   });
 }
 async function fileMenu() {
-  const records = await library();
+  const records = await library().catch(() => {
+    notify("The local library is unavailable. You can still download your open notebook.");
+    return [];
+  });
   openPop($("files"), "files", "Notebook", () => {
     menuAction("New notebook", newBook);
     menuAction("Open notebook or PDF…", () => $("file").click());
@@ -2282,6 +2285,9 @@ async function fileMenu() {
         );
     }
     const rest = records.filter((r) => r.id !== book?.id);
+    const offline = $el("small", $("offline-status").textContent);
+    offline.id = "offline-menu-status";
+    pop.append(offline);
     if (rest.length) {
       pop.append($el("hr"), $el("small", "Recent notebooks"));
       for (const row of rest) menuAction(row.title, () => openStored(row.id));
@@ -2730,7 +2736,40 @@ run(async () => {
   $("new").disabled = false;
   $("open").disabled = false;
 });
-if ("serviceWorker" in navigator)
-  navigator.serviceWorker
-    .register("./sw.js")
-    .catch((e) => notify("Offline setup failed: " + e.message));
+function offlineStatus(message) {
+  $("offline-status").textContent = message;
+  const inMenu = $("offline-menu-status");
+  if (inMenu) inMenu.textContent = message;
+}
+
+async function prepareOffline() {
+  if (!("serviceWorker" in navigator)) {
+    offlineStatus("Offline setup is unavailable in this browser.");
+    return;
+  }
+  try {
+    const registration = await navigator.serviceWorker.register("./sw.js");
+    const interrupted = "Offline setup was interrupted. Reopen online to retry.";
+    const observe = () => {
+      const worker = registration.installing || registration.waiting || registration.active;
+      if (!worker) {
+        offlineStatus(interrupted);
+        return;
+      }
+      const report = () => {
+        if (registration.active?.state === "activated")
+          offlineStatus("Ready offline");
+        else if (worker.state === "redundant")
+          offlineStatus(interrupted);
+        else offlineStatus("Preparing for offline use…");
+      };
+      worker.addEventListener("statechange", report);
+      report();
+    };
+    registration.addEventListener("updatefound", observe);
+    observe();
+  } catch {
+    offlineStatus("Offline setup is unavailable. Reopen online to retry.");
+  }
+}
+prepareOffline();

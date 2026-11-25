@@ -253,6 +253,9 @@ export function studyContent(pop, problem) {
   out.setAttribute("aria-live", "polite");
   const row = el("div");
   row.className = "choices";
+  const localTutor = [
+    "http://127.0.0.1:48765", "http://127.0.0.1:8765", "http://localhost:8765",
+  ].includes(location.origin) && new URL("./", location.href).pathname === "/";
   const result = () => GridnoteSolve.solve(input.value, problem.code);
   const local = () => {
     const r = result();
@@ -265,7 +268,9 @@ export function studyContent(pop, problem) {
       out.append(
         el(
           "p",
-          "Use Ask AI for a worked explanation, or copy this exercise to ChatGPT. You can edit the recognized text above.",
+          localTutor
+            ? "Use Ask AI for a worked explanation, or copy this exercise to ChatGPT."
+            : "Copy this exercise to ChatGPT for a worked explanation. You can edit the recognized text above.",
         ),
       );
   };
@@ -276,39 +281,41 @@ export function studyContent(pop, problem) {
     return b;
   };
   action("Solve", local);
-  const ai = action("Ask AI", async () => {
-    ai.disabled = true;
-    out.textContent = "Getting an explanation…";
-    try {
-      const response = await fetch("./api/explain", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Gridnote-Request": "1",
-        },
-        body: JSON.stringify({
-          text: input.value,
-          image: crop?.toDataURL("image/jpeg", 0.86),
-          kind: result()?.kind || "Question",
-        }),
-        signal: AbortSignal.timeout(90000),
-      });
-      if (!response.headers.get("content-type")?.includes("application/json"))
-        throw Error(
-          "This installation has no AI server. Use Copy to ChatGPT, or start the study server in the README.",
-        );
-      const data = await response.json();
-      if (!response.ok)
-        throw Error(data.error || "The AI server could not answer.");
-      out.textContent = data.answer;
-    } catch (e) {
-      out.textContent = e.message;
-    } finally {
-      ai.disabled = false;
-    }
-  });
-  ai.title =
-    "Send the selected exercise text and its preview image to your configured AI server";
+  if (localTutor) {
+    const ai = action("Ask AI", async () => {
+      ai.disabled = true;
+      out.textContent = "Getting an explanation…";
+      try {
+        const response = await fetch("./api/explain", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Gridnote-Request": "1",
+          },
+          body: JSON.stringify({
+            text: input.value,
+            image: crop?.toDataURL("image/jpeg", 0.86),
+            kind: result()?.kind || "Question",
+          }),
+          signal: AbortSignal.timeout(90000),
+        });
+        if (!response.headers.get("content-type")?.includes("application/json"))
+          throw Error(
+            "This installation has no AI server. Use Copy to ChatGPT, or start the study server in the README.",
+          );
+        const data = await response.json();
+        if (!response.ok)
+          throw Error(data.error || "The AI server could not answer.");
+        out.textContent = data.answer;
+      } catch (e) {
+        out.textContent = e.message;
+      } finally {
+        ai.disabled = false;
+      }
+    });
+    ai.title =
+      "Send the selected exercise text and its preview image to your configured AI server";
+  }
   action("Copy to ChatGPT", () => {
     const prompt = GridnoteSolve.prompt(
       input.value,
@@ -339,7 +346,7 @@ export function studyContent(pop, problem) {
         )
         .catch(() => {
           out.textContent =
-            "Copy the exercise image from the preview, or use Ask AI.";
+            "Copy the exercise image from the preview and paste it into ChatGPT.";
         });
       return;
     }
@@ -365,6 +372,6 @@ export function studyContent(pop, problem) {
   pop.append(input, row, out);
   if (problem.review) {
     out.textContent =
-      "Check the recognized text against the image, then click Solve. Use Ask AI to read the selected image.";
+      "Check the recognized text against the image, then choose Solve.";
   } else local();
 }

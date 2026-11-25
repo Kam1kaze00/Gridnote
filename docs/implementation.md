@@ -52,3 +52,10 @@ Physics and engineering calculators label quantities and units and show their go
 During pen contact the portable renderer reuses the visible page background and fits a short live tail. Both clients reuse completed portions of long stroke previews. On lift, all recorded samples feed the final editable curve. The physical pen position and the newest recorded sample are never delayed to wait for future points. [W3C coalesced input events](https://www.w3.org/TR/pointerevents/)
 
 A local WebKit benchmark on macOS used a 240-stroke page, a 1,280-sample live stroke, an 820 × 960 viewport and a 2× backing scale. Across 155 measured frames the 95th-percentile JavaScript paint callback went from 3 ms to 1 ms at 1-ms timer resolution. A separate optimized AppKit benchmark rendered 240 completed strokes into a 1200 × 1640 bitmap in 4.23 ms median. These measure rendering work on the test Mac. Physical tablet input and display latency need separate hardware measurements.
+
+
+## Offline installation and public builds
+
+The portable launcher and notebook menu report readiness after service-worker activation. Installation caches the editor, fonts, PDF renderer and OCR data before activation. Failed installations remove their partial cache and a later online launch retries. Browser tests interrupt a first install, retry it and reopen an edited notebook offline. The hosted Solve panel offers offline calculations and a clipboard handoff. The direct AI action appears on the local study server and desktop launcher. [Service worker lifecycle](https://developer.chrome.com/docs/workbox/service-worker-lifecycle) · [iPad Home Screen apps](https://support.apple.com/guide/ipad/ipad8f1f7a29/ipados) · [Chrome web app installation](https://support.google.com/chrome/answer/9658361)
+
+The release packager exports a single Git revision, builds both Mac architectures and four Windows/Linux launchers, checks ZIP integrity and writes SHA-256 digests. The portable builder stages an explicit list of client sources and pinned dependencies. It reports unexpected entries in a reused destination before copying any files into it.

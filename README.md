@@ -8,15 +8,21 @@ Paste an exercise, solve it by hand, and share the finished A4 pages. Gridnote s
 
 ## Get started
 
-| Device | Open Gridnote |
+[Open Gridnote in your browser](https://kam1kaze00.github.io/Gridnote/) · [All desktop downloads and checksums](https://github.com/Kam1kaze00/Gridnote/releases/latest)
+
+| Device | First launch |
 | --- | --- |
-| Mac with a pen tablet | Open the macOS app. The launcher displays the tablet name when the system provides it. |
-| Windows or Linux | Extract the standalone ZIP for your processor and run Gridnote. The executable opens its embedded editor in your default browser. |
-| iPad, Android, phone or Chromebook | Open an HTTPS-hosted portable build. On iPad, use Safari’s **Share → Add to Home Screen**. Allow the first visit to finish caching the app for offline use. |
+| Mac with a pen tablet | Choose [Apple silicon](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-arm64.zip) or [Intel](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-macOS-x86_64.zip) for macOS 13 or later. Extract the ZIP and open Gridnote. About This Mac shows your chip. |
+| Windows | Download [x64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-windows-amd64.zip) or [ARM64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-windows-arm64.zip). Extract the ZIP and run `Gridnote.exe`. |
+| Linux | Download [x86-64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-linux-amd64.zip) or [ARM64](https://github.com/Kam1kaze00/Gridnote/releases/latest/download/Gridnote-linux-arm64.zip). Extract the ZIP and run `./Gridnote` in that folder. If your extractor drops execute permission, run `chmod +x Gridnote` first. |
+| iPad or iPhone | Open the browser app in Safari. Choose **Share → Add to Home Screen**, enable **Open as Web App** if shown, then open the new icon while online. |
+| Android or Chromebook | Open the browser app in Chrome and choose the browser’s **Install** action. |
 
-[Open Gridnote on a tablet or phone](https://kam1kaze00.github.io/Gridnote/) · [Download the desktop app](https://github.com/Kam1kaze00/Gridnote/releases/latest)
+On the web, **Ready offline** appears on the launcher and in the notebook menu after setup finishes. Open the same browser profile or Home Screen icon when you return. The Windows and Linux launchers open the editor in your default browser. Keep the launcher running during use.
 
-Choose **New Notebook** or open an existing notebook or PDF. Try the [editable circuit exercise](docs/examples/Series%20circuit.gridnote) or see its [finished PDF](docs/examples/Series%20circuit.pdf).
+Desktop downloads are community builds. The Mac app has an ad hoc signature and has not been notarized by Apple. The Windows executable is unsigned. Gatekeeper or SmartScreen may restrict first launch. The browser app is available on managed devices where downloads are restricted. [Apple distribution guidance](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) · [Microsoft SmartScreen guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+
+Choose **New Notebook** or open a notebook or PDF. Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 
 ## In a lecture
 
@@ -49,4 +55,8 @@ python3 study_server.py
 
 Open [the local notebook](http://127.0.0.1:8765). Set `OPENAI_API_KEY` in the server environment to enable Ask AI. To host the installable app, serve `build/standalone` over HTTPS. To build a Windows or Linux executable with Go, use `python3 scripts/desktop.py build/standalone build/releases --os windows --arch amd64`. The launcher serves embedded assets on loopback.
 
-The project includes an [offline user guide](web/guide.html), [design sources and verification notes](docs/implementation.md), and an [MIT license](LICENSE). Bundled dependencies retain their own licenses.
+To package a release from a committed revision on a Mac with Go and the Command Line Tools, run `python3 scripts/release.py build/releases --ref HEAD`. The command assembles eight ZIPs and their SHA-256 checksums from that revision in a clean directory.
+
+For a problem report, include your OS, device, Gridnote version and the steps that trigger it. [Report an issue](https://github.com/Kam1kaze00/Gridnote/issues)
+
+The project includes an [online user guide](https://kam1kaze00.github.io/Gridnote/guide.html), [design sources and verification notes](docs/implementation.md), and an [MIT license](LICENSE). Bundled dependencies retain their own licenses.

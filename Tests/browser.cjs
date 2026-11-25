@@ -5,8 +5,13 @@ const path = require("node:path");
 const http = require("node:http");
 // Playwright WebKit's offline emulation rejects service-worker navigation.
 // Disconnect a real test origin to exercise cached navigation on that engine.
-async function webkitOrigin(target) {
+async function testOrigin(target, unavailable = () => false) {
   const proxy = http.createServer((req, res) => {
+    if (unavailable(req.url)) {
+      res.writeHead(503);
+      res.end();
+      return;
+    }
     const up = http.request(
       new URL(req.url, target),
       { method: req.method },
@@ -42,8 +47,24 @@ async function main() {
         : {}),
     });
   const target = process.env.GRIDNOTE_URL || "http://127.0.0.1:8793/";
-  const proxy = name === "webkit" ? await webkitOrigin(target) : null;
+  const proxy = name === "webkit" ? await testOrigin(target) : null;
   try {
+    if (name === "chromium") {
+      let interrupt = true;
+      const interrupted = await testOrigin(target, url => interrupt && url.endsWith("eng.traineddata.gz"));
+      const fresh = await browser.newContext();
+      try {
+        const firstVisit = await fresh.newPage();
+        await firstVisit.goto(interrupted.url);
+        await firstVisit.waitForFunction(() => document.querySelector("#offline-status")?.textContent.includes("interrupted"));
+        interrupt = false;
+        await firstVisit.reload();
+        await firstVisit.waitForFunction(() => document.querySelector("#offline-status")?.textContent === "Ready offline");
+      } finally {
+        await fresh.close();
+        interrupted.close();
+      }
+    }
     const context = await browser.newContext({
       viewport: { width: 1100, height: 760 },
       acceptDownloads: true,
@@ -147,6 +168,9 @@ async function main() {
     );
     await tap(86, 287);
     assert.match(await page.locator(".study-answer").innerText(), /x = 4/);
+    const hasTutor = ["http://127.0.0.1:48765", "http://127.0.0.1:8765", "http://localhost:8765"]
+      .includes(new URL(page.url()).origin);
+    assert.equal(await page.getByRole("button", { name: "Ask AI", exact: true }).count(), Number(hasTutor));
     await page.keyboard.press("Escape");
     await page.click("#preview");
     await page.waitForSelector("#pdfcanvas");
@@ -198,10 +222,22 @@ async function main() {
     await page.waitForFunction(() =>
       Boolean(navigator.serviceWorker.controller),
     );
+    await page.waitForFunction(() => document.querySelector("#offline-status").textContent === "Ready offline");
     if (proxy) proxy.close();
     else await context.setOffline(true);
     await page.reload();
     await page.waitForSelector("#sheet");
+    await page.evaluate(() => {
+      IDBObjectStore.prototype.getAll = () => { throw new Error("Library unavailable"); };
+    });
+    await page.click("#files");
+    await page.waitForFunction(() => document.querySelector("#offline-menu-status")?.textContent === "Ready offline");
+    const backupDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download editable notebook" }).click();
+    const backup = await backupDownload;
+    const restored = JSON.parse(await fs.readFile(await backup.path(), "utf8"));
+    assert(restored.objects.some((o) => o.table?.cells[0] === "Velocity"));
+    await page.keyboard.press("Escape");
     assert(
       (await book()).objects.some((o) => o.table?.cells[0] === "Velocity"),
     );
