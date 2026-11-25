@@ -79,6 +79,7 @@ async function main() {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.setDefaultTimeout(8000);
+    page.setDefaultNavigationTimeout(45000);
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "canShare", {
         value: (v) => v.files?.[0]?.type === "application/pdf",
@@ -93,7 +94,8 @@ async function main() {
         configurable: true,
       });
     });
-    await page.goto(proxy?.url || target);
+    await page.goto(proxy?.url || target, { waitUntil: "domcontentloaded" });
+    await page.locator(".start-card").waitFor();
     const paper = await page.evaluate(async () => {
       const { blank, validate } = await import("./engine.mjs");
       const notebook = blank();

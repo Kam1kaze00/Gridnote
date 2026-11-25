@@ -25,8 +25,9 @@ const assert = require("node:assert/strict");
       await page.setViewportSize({ width: w, height: h });
       await page.evaluate(() => document.fonts.ready);
       const bounds = await page.locator(".start-card").boundingBox();
-      assert(bounds.x >= 0 && bounds.x + bounds.width <= w + 1 && bounds.width <= 429,
-        "launcher fits at " + w);
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= w + 1 && bounds.width <= 429 &&
+        Math.abs(bounds.x - (w - bounds.x - bounds.width)) <= 1,
+        "launcher fits and is centered at " + w + ": " + JSON.stringify(bounds));
     }
     await page.click("#new");
     await page.waitForSelector("#sheet");

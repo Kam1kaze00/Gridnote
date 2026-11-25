@@ -1,5 +1,5 @@
 .launcher-host {
-  display: grid; place-items: center; box-sizing: border-box; width: 100%; overflow: auto;
+  display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; overflow: auto;
   padding: clamp(12px, 4vw, 36px); background: #181f24; color: #f3f7f5;
   color-scheme: dark; font: 14px/1.4 system-ui, sans-serif;
 }
