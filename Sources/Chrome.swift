@@ -45,7 +45,7 @@ enum NotebookTheme: String, CaseIterable, Codable {
     case .cartoon:
       face = weight.rawValue >= NSFont.Weight.semibold.rawValue ? "Georgia-Bold" : "Georgia"
     case .tokyo: face = "BarlowSemiCondensed-Regular"
-    case .cyber: face = "IBMPlexMono"
+    case .cyber: face = "IBMPlexMono-Regular"
     case .pixel: face = "PixelifySans-Regular"
     }
     _ = ChromeTheme.registerFonts

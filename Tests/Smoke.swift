@@ -53,10 +53,8 @@ import WebKit
         PenPreferences(defaults: defaults).theme == theme
           && ChromeTheme.icon("pen", color: .black) != nil,
         "native toolbar and saved theme: " + theme.rawValue)
-      if theme == .pixel {
-        expect(
-          theme.font(12).familyName?.contains("Pixelify") == true,
-          "native pixel typeface loads offline")
+      if let family = [NotebookTheme.pixel: "Pixelify Sans", .cyber: "IBM Plex Mono", .tokyo: "Barlow Semi Condensed"][theme] {
+        expect(theme.font(12).familyName == family, "native " + family + " typeface loads offline")
       }
     }
     preferences.restore()
