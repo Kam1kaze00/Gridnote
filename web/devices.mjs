@@ -30,34 +30,15 @@ try {
 } catch {
   prefs = {};
 }
+if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) prefs = {};
+if (Object.hasOwn(prefs, "major") || Object.hasOwn(prefs, "theme")) {
+  delete prefs.major;
+  delete prefs.theme;
+  remember();
+}
 export let device = initial;
 let hardware = null,
   observedPen = false;
-export const majors = [
-  "None",
-  "Chemistry",
-  "Physics",
-  "Medicine",
-  "Mathematics",
-  "Electrical Engineering",
-  "Computer Science",
-  "Mechanical Engineering",
-];
-export const major = () =>
-  majors.includes(prefs.major) ? prefs.major : "None";
-export function chooseMajor(v) {
-  if (majors.includes(v)) {
-    prefs.major = v;
-    remember();
-  }
-}
-export const themes = Object.keys(GridnoteAppearance.catalog);
-export function theme() {
-  return themes.includes(prefs.theme) ? prefs.theme : themes[0];
-}
-export function chooseTheme(value) {
-  if (themes.includes(value)) { prefs.theme = value; remember(); }
-}
 export function deviceLabel() {
   if (hardware) return hardware.name + " · Detected";
   if (observedPen)

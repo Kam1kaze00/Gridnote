@@ -236,7 +236,6 @@ final class StudyPanel: NSViewController {
     let stack = chromeStack([], spacing: 8, horizontal: false)
     view.addSubview(stack)
     defer {
-      ChromeTheme.styleControls(stack)
       let size = stack.fittingSize
       preferredContentSize = CGSize(width: ceil(size.width) + 28, height: ceil(size.height) + 24)
     }

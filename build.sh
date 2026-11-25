@@ -4,14 +4,14 @@ cd "${0:A:h}"
 destination="${1:-$PWD/build}"
 mkdir -p "$destination"
 destination="${destination:A}"
-build_tmp="$(mktemp -d)"
+build_tmp="$(mktemp -d "$destination/.gridnote-build.XXXXXXXX")"
 trap 'rm -rf "$build_tmp"' EXIT
 bundle="$build_tmp/Gridnote.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$build_tmp/Gridnote.iconset"
-cp web/{guide.html,subjects.html,subjects.js,majors.js,elements.js} "$bundle/Contents/Resources/"
+cp web/guide.html "$bundle/Contents/Resources/"
 mkdir -p "$bundle/Contents/Resources/assets"
-cp web/assets/* "$bundle/Contents/Resources/assets/"
-cp web/{launcher.html,launcher.css,launcher.js,themes.css,appearance.js} "$bundle/Contents/Resources/"
+cp web/assets/icon-192.png "$bundle/Contents/Resources/assets/"
+cp web/{launcher.html,launcher.css,launcher.js} "$bundle/Contents/Resources/"
 cp web/solver.js "$bundle/Contents/Resources/solver.js"
 cp scripts/Info.plist "$bundle/Contents/Info.plist"
 arch="${GRIDNOTE_ARCH:-$(uname -m)}"
@@ -22,4 +22,25 @@ swiftc Sources/Chrome.swift scripts/Icon.swift -o "$build_tmp/icon"
 iconutil -c icns "$build_tmp/Gridnote.iconset" -o "$bundle/Contents/Resources/Gridnote.icns"
 codesign --force --sign - "$bundle"
 codesign --verify --strict "$bundle"
-ditto "$bundle" "$destination/Gridnote.app"
+# Replace the bundle as a unit so upgrades also remove retired resources.
+python3 - "$bundle" "$destination/Gridnote.app" <<'PYTHON'
+import ctypes
+import os
+import plistlib
+import sys
+from pathlib import Path
+
+built, target = map(Path, sys.argv[1:])
+if target.is_symlink():
+    raise SystemExit("Choose a build folder without a linked Gridnote.app.")
+if target.exists():
+    with (target / "Contents/Info.plist").open("rb") as info:
+        if plistlib.load(info).get("CFBundleIdentifier") != "app.gridnote.notebook.mac":
+            raise SystemExit("The existing bundle is not Gridnote.")
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.renamex_np(os.fsencode(built), os.fsencode(target), 2):  # RENAME_SWAP
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+else:
+    built.rename(target)
+PYTHON

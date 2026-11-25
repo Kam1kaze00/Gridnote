@@ -51,7 +51,12 @@ struct WritingStyle {
 
 final class PenPreferences {
   private let defaults: UserDefaults
-  init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    // Discard retired interface preferences without resetting pen or device tuning.
+    for key in ["StudyMajor", "NotebookAppearance", "CartoonAppearance"]
+    where defaults.object(forKey: key) != nil { defaults.removeObject(forKey: key) }
+  }
 
   private var connection = InputDevice.connected()
   var device: InputDevice { connection.profile }
@@ -78,10 +83,6 @@ final class PenPreferences {
     get { deviceValue("Smoothing", fallback: device == .mouse ? 0.65 : 0.48, range: 0...1) }
     set { defaults.set(newValue, forKey: deviceKey("Smoothing")) }
   }
-  static let majors = [
-    "None", "Chemistry", "Physics", "Medicine", "Mathematics", "Electrical Engineering",
-    "Computer Science", "Mechanical Engineering",
-  ]
   func toolAppearance(_ tool: NoteTool) -> (name: String, symbol: String) {
     switch tool {
     case .brush:
@@ -103,35 +104,6 @@ final class PenPreferences {
     }
   }
 
-  func illustration(_ tool: NoteTool) -> String {
-    switch tool {
-    case .brush: return nib.rawValue.lowercased()
-    case .selector: return [.tap: "tap", .box: "box-select", .lasso: "lasso"][selectionMode]!
-    case .eraser: return [.regular: "regular", .stroke: "stroke", .box: "region-erase", .lasso: "lasso-erase"][eraseMode]!
-    case .text: return code ? "code" : [.natural: "text", .left: "left", .center: "center", .right: "right"][textAlignment]!
-    case .marker: return "marker"
-    case .shapes: return [.line: "line", .arrow: "arrow", .rectangle: "box", .ellipse: "oval", .axes: "axes"][shape]!
-    case .table: return tableHeader ? "table-header" : "table"
-    }
-  }
-  var theme: NotebookTheme {
-    get {
-      defaults.string(forKey: "NotebookAppearance").flatMap(NotebookTheme.init(rawValue:))
-        ?? (defaults.bool(forKey: "CartoonAppearance") ? .cartoon : .standard)
-    }
-    set { defaults.set(newValue.rawValue, forKey: "NotebookAppearance") }
-  }
-  var cartoonTheme: Bool {
-    get { theme == .cartoon }
-    set { theme = newValue ? .cartoon : .standard }
-  }
-  var major: String {
-    get {
-      defaults.string(forKey: "StudyMajor").flatMap { Self.majors.contains($0) ? $0 : nil }
-        ?? "None"
-    }
-    set { if Self.majors.contains(newValue) { defaults.set(newValue, forKey: "StudyMajor") } }
-  }
   private var legacyTip: WritingTip {
     WritingTip(rawValue: defaults.string(forKey: deviceKey("Nib")) ?? "") ?? .brush
   }
@@ -179,9 +151,6 @@ final class PenPreferences {
       }
       defaults.removeObject(forKey: "PenScrollSpeed")
       defaults.removeObject(forKey: "PaletteVisible")
-      defaults.removeObject(forKey: "StudyMajor")
-      defaults.removeObject(forKey: "CartoonAppearance")
-      defaults.removeObject(forKey: "NotebookAppearance")
     }
   }
   var pressure: Double {
@@ -1305,9 +1274,6 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     }
   }
 
-  func insertStudyResult(_ value: String) {
-    insert([textObject(at: insertionOrigin, text: value)], name: "Insert Study Result")
-  }
   private var insertionOrigin: CGPoint {
     let visible = visibleRect
     let x = max(paperGrid * 4.6, visible.minX + 18)
@@ -1651,7 +1617,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     if !feedback.matches.isEmpty { text += " · " + feedback.matches.joined(separator: "+") }
     let label = NSAttributedString(
       string: text,
-      attributes: [.font: ChromeTheme.current.font(11 / scale), .foregroundColor: NSColor.white])
+      attributes: [.font: NSFont.systemFont(ofSize: 11 / scale), .foregroundColor: NSColor.white])
     let w = label.size().width + 12 / scale, h = label.size().height + 6 / scale
     let f = CGRect(
       x: max(visibleRect.minX, min(visibleRect.maxX - w, point.x + 10 / scale)),

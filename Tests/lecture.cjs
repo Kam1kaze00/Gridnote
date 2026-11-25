@@ -15,7 +15,6 @@ const { chromium, webkit, devices } = require("playwright");
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(process.env.GRIDNOTE_URL);
-    await page.getByLabel("Major", { exact: true }).selectOption("Physics");
     await page.tap("#new");
     const sheet = page.locator("#sheet"), editor = page.locator("#editor");
     for (const id of ["tool-brush", "tool-eraser", "undo", "fit"]) {

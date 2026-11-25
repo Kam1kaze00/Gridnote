@@ -30,7 +30,6 @@ jobs:
       - run: python scripts/desktop.py build/standalone build/releases --os ${{ matrix.target }} --arch host
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps ${{ matrix.engine }}
-      - run: node Tests/subjects.cjs
       - run: node Tests/solver.cjs
       - run: python Tests/test_server.py
       - run: python Tests/run_browser.py

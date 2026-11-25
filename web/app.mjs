@@ -67,9 +67,6 @@ import {
   useFinger,
   sampledRadius,
   restore,
-  majors,
-  major,
-  chooseMajor, theme, themes, chooseTheme,
   settings,
   setting,
   deviceHelp,
@@ -469,13 +466,6 @@ async function openStored(id) {
 }
 async function newBook() {
   const notebook = blank();
-  if (theme() !== "Default")
-    notebook.defaultPaper = {
-      ruling: "Grid",
-      tint: GridnoteAppearance.catalog[theme()].tint,
-      stationery: theme(),
-      cartoon: theme() === "70s Cartoon",
-    };
   await openBook(notebook, "Untitled Notebook");
   touchSave();
   await flush();
@@ -545,7 +535,6 @@ function refreshPageControls() {
 }
 function refresh() {
   if (!book) return;
-  refreshSubjectStrip();
   const prefs = settings();
   for (const id of Object.keys(toolNames)) {
     const button = $("tool-" + id);
@@ -628,7 +617,6 @@ function setZoom(n, screen = [view.clientWidth / 2, view.clientHeight / 2]) {
 function draw() {
   if (!paintFrame) paintFrame = requestAnimationFrame(paint);
 }
-window.addEventListener("gridnote-paper-loaded", () => { if (book) backgroundReady(); });
 function backgroundReady() {
   if (inkBackdrop) inkBackdrop.book = null;
   draw();
@@ -800,7 +788,7 @@ function paint() {
   if (gesture?.measure) {
     const { point, text } = gesture.measure;
     ctx.save();
-    ctx.font = 11 / scale + "px " + measureTypeface;
+    ctx.font = 11 / scale + "px system-ui";
     const w = ctx.measureText(text).width + 12 / scale,
       h = 21 / scale;
     const x = clamp(
@@ -2616,55 +2604,6 @@ function menuAction(label, action, enabled = true) {
   item.disabled = !enabled;
   pop.append(item);
 }
-function refreshSubjectStrip() {
-  const shelf = $("subject-strip"), name = major();
-  if (shelf.dataset.major === name) return;
-  shelf.dataset.major = name;
-  shelf.hidden = name === "None";
-  shelf.replaceChildren();
-  if (shelf.hidden) return;
-  shelf.append($el("strong", name));
-  for (const entry of GridnoteKits.kits[name]) {
-    const chip = button(entry.name, () => {
-      openPop(chip, "subjects", null, () => {
-        const frame = $el("iframe");
-        frame.title = entry.name;
-        frame.src = "./subjects.html?tool=" + encodeURIComponent(entry.name) + "&theme=" + encodeURIComponent(theme()) + "#" + encodeURIComponent(name);
-        frame.className = "subject-frame";
-        frame.dataset.periodic = String(Boolean(entry.periodic));
-        pop.append(frame);
-      });
-    });
-    shelf.append(chip);
-  }
-}
-window.addEventListener("message", (e) => {
-  const frame = pop.querySelector("iframe.subject-frame");
-  if (
-    !book ||
-    pop.hidden ||
-    !frame ||
-    e.origin !== location.origin ||
-    e.source !== frame.contentWindow
-  )
-    return;
-  if (e.data?.type === "gridnote-study-size") {
-    const {height, periodic} = e.data;
-    if (!Number.isFinite(height) || height <= 0 || typeof periodic !== "boolean") return;
-    frame.dataset.periodic = String(periodic);
-    frame.style.height = Math.ceil(height) + "px";
-    positionPop(popupAnchor);
-    return;
-  }
-  if (e.data?.type !== "gridnote-study-result" || typeof e.data.text !== "string" ||
-    e.data.text.length > 4096) return;
-  closePop();
-  startText(insertion());
-  editing.object.codeStyle = null;
-  editor.value = e.data.text;
-  placeEditor();
-  finishText();
-});
 let lastNotebookID, pausedView;
 async function showStartScreen() {
   finishText();
@@ -2674,8 +2613,6 @@ async function showStartScreen() {
   pausedView = positionState();
   lastNotebookID = book.id;
   closePop();
-  launcher.selectMajor(major());
-  launcher.selectTheme(theme());
   launcher.recent(title, true);
   $("welcome").hidden = false;
   document.body.classList.add("launching");
@@ -2701,65 +2638,9 @@ async function openLauncherChoice(action) {
   if (pausedView) view.scrollTo(pausedView.x * scale, pausedView.y * scale);
   draw();
 }
-let measureTypeface = "system-ui";
-function applyTheme() {
-  const style = GridnoteAppearance.apply(theme());
-  measureTypeface = getComputedStyle(document.body).fontFamily;
-  $("files").querySelector("img").src = "./assets/" + style.mark;
-  document.querySelector('link[rel="icon"]').href = "./assets/" + style.mark;
-  const actions = {
-    settings: "settings",
-    palette: "palette",
-    addimage: "addimage",
-    undo: "undo",
-    redo: "redo",
-  };
-  for (const [id, icon] of Object.entries(actions)) {
-    const control = $(id);
-    if (!control.dataset.glyph) control.dataset.glyph = control.textContent;
-    if (theme() !== "Default") {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("class", "ink-glyph");
-      svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("viewBox", "0 0 24 24");
-      const use = document.createElementNS(svg.namespaceURI, "use");
-      use.setAttribute("href", "./assets/" + style.sprite + ".svg#" + icon);
-      svg.append(use);
-      control.replaceChildren(svg);
-    } else control.textContent = control.dataset.glyph;
-  }
-  document.querySelector('meta[name="theme-color"]').content = style.chrome;
-}
-function themeMenu(label, value, change) {
-  const row = $el("label", label),
-    picker = $el("select");
-  picker.setAttribute("aria-label", label);
-  GridnoteAppearance.fillPicker(picker);
-  picker.value = value;
-  picker.onchange = () => change(picker.value);
-  row.append(picker);
-  pop.append(row);
-}
 function settingsMenu() {
   openPop($("settings"), "device", "Options", () => {
-    themeMenu("Theme", theme(), (value) => {
-      chooseTheme(value);
-      applyTheme();
-      refresh();
-    });
     pop.append($el("small", deviceLabel()));
-    const label = $el("label", "Major"),
-      select = $el("select");
-    select.setAttribute("aria-label", "Major");
-    for (const name of majors) select.append($el("option", name));
-    select.value = major();
-    select.onchange = () => {
-      chooseMajor(select.value);
-      launcher.selectMajor(major());
-      refresh();
-    };
-    label.append(select);
-    pop.append(label);
     if (mobileSurface)
       checkOption("Write with finger", fingerWrites(), useFinger);
     if (devices[device][2] || !matchMedia("(pointer:coarse)").matches)
@@ -2774,7 +2655,6 @@ function settingsMenu() {
     pop.append($el("p", deviceHelp()));
     menuAction("Restore all settings", () => {
       restore();
-      applyTheme();
       refresh();
       settingsMenu();
     });
@@ -2803,19 +2683,6 @@ function paperMenu() {
       changePaper({ ...design, ruling: x });
       paperMenu();
     });
-    themeMenu(
-      "Stationery",
-      design.stationery || (design.cartoon ? "70s Cartoon" : "Default"),
-      (value) => {
-        changePaper({
-          ...design,
-          stationery: value,
-          cartoon: value === "70s Cartoon",
-          tint: GridnoteAppearance.catalog[value].tint || "White",
-        });
-        paperMenu();
-      },
-    );
     pop.append($el("small", "Paper color · " + design.tint));
     const names = Object.keys(tints);
     swatches(
@@ -2841,7 +2708,7 @@ async function fileMenu() {
     menuAction("Notebook launcher…", showStartScreen);
     menuAction("Help & About", () =>
       window.open(
-        "./guide.html#theme=" + encodeURIComponent(theme()),
+        "./guide.html",
         "_blank",
         "noopener",
       ),
@@ -3272,15 +3139,14 @@ function updateToolIcon(id, button, prefs) {
   const mode = { brush: prefs.nib, selector: prefs.select, eraser: prefs.erase,
     text: prefs.code ? "Code" : prefs.alignment, shapes: prefs.shape,
     marker: markerNames[prefs.markerInk], table: prefs.header ? "With header" : "Plain" }[id];
-  if (button.dataset.mode === mode && button.dataset.theme === theme()) return;
-  button.dataset.theme = theme();
+  if (button.dataset.mode === mode) return;
   button.dataset.mode = mode;
   const key = iconModes[id]?.[mode] || "marker";
   button
     .querySelector("use")
     .setAttribute(
       "href",
-      "./assets/" + GridnoteAppearance.catalog[theme()].sprite + ".svg#" + key,
+      "./assets/tools.svg#" + key,
     );
   if (id === "marker") button.querySelector("svg").style.color = rgb(markers[prefs.markerInk]);
   const [family, shortcut] = toolNames[id];
@@ -3388,11 +3254,9 @@ $("pdfnext").onclick = () => {
     run(updatePreview);
   }
 };
-applyTheme();
 const launcher = GridnoteLauncher.mount($("welcome"), {
-  major: major(), theme: theme(), changeTheme: value => { chooseTheme(value); applyTheme(); }, device: mobileSurface ? "" : deviceLabel(),
+  device: mobileSurface ? "" : deviceLabel(),
   start: action => run(() => enterFromLauncher(action)),
-  change: value => chooseMajor(value),
 });
 const detectedLabel = $("detected-device");
 detectedLabel.hidden = mobileSurface;

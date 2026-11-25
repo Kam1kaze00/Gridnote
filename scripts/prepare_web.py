@@ -13,9 +13,9 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 source_files = """
-    image-size.mjs app.mjs blocks.mjs camera.mjs devices.mjs elements.js engine.mjs eraser.mjs
-    guide.html index.html launcher.html launcher.css launcher.js appearance.js themes.css majors.js manifest.webmanifest pages.mjs render.mjs
-    solver.js store.mjs study-geometry.mjs study.mjs style.css subjects.html subjects.js
+    image-size.mjs app.mjs blocks.mjs camera.mjs devices.mjs engine.mjs eraser.mjs
+    guide.html index.html launcher.html launcher.css launcher.js manifest.webmanifest pages.mjs render.mjs
+    solver.js store.mjs study-geometry.mjs study.mjs style.css
 """.split()
 source_files += [p.relative_to(root / "web").as_posix() for p in sorted((root / "web/assets").glob("*")) if p.is_file() and not p.name.startswith(".")]
 packages = {
@@ -129,18 +129,37 @@ def publish(destination):
         raise SystemExit('Choose a separate build directory.')
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=destination.parent) as scratch:
-        stage = Path(scratch)
+        stage = Path(scratch) / 'site'
+        stage.mkdir()
         count = build(stage, destination.parent / '.gridnote-build-cache')
         if destination.exists():
-            if not destination.is_dir():
-                raise SystemExit('The destination must be a directory.')
+            if destination.is_symlink() or not destination.is_dir():
+                raise SystemExit('The destination must be a build directory.')
+            # An earlier build's offline file list identifies its retired assets.
+            manifest = destination / 'sw.js'
+            managed = set()
+            if manifest.is_file() and not manifest.is_symlink():
+                for line in manifest.read_text().splitlines():
+                    if line.startswith('  const list=') and line.endswith(';'):
+                        managed = set(json.loads(line.split('=', 1)[1][:-1]))
+                        break
             for path in destination.rglob('*'):
                 relative = path.relative_to(destination)
                 expected = stage / relative
-                if (path.is_symlink() or not expected.exists()
-                        or path.is_file() != expected.is_file()):
+                old = './' + relative.as_posix()
+                known = old in managed if path.is_file() else any(f.startswith(old + '/') for f in managed)
+                if path.is_symlink() or not (known or expected.exists()) or (expected.exists() and path.is_file() != expected.is_file()):
                     raise SystemExit(f'Output contains an unrelated entry: {relative}. Choose an empty directory.')
-        shutil.copytree(stage, destination, dirs_exist_ok=True)
+            previous = Path(scratch) / 'previous'
+            destination.rename(previous)
+            try:
+                stage.rename(destination)
+            except OSError:
+                if not destination.exists():
+                    previous.rename(destination)
+                raise
+        else:
+            stage.rename(destination)
     print(f'Built {count} offline assets in {destination}')
 
 

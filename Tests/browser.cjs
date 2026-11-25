@@ -79,6 +79,7 @@ async function main() {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.setDefaultTimeout(8000);
+    page.setDefaultNavigationTimeout(45000);
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "canShare", {
         value: (v) => v.files?.[0]?.type === "application/pdf",
@@ -93,25 +94,26 @@ async function main() {
         configurable: true,
       });
     });
-    await page.goto(proxy?.url || target);
+    await page.goto(proxy?.url || target, { waitUntil: "domcontentloaded" });
+    await page.locator(".start-card").waitFor();
+    const paper = await page.evaluate(async () => {
+      const { blank, validate } = await import("./engine.mjs");
+      const notebook = blank();
+      notebook.defaultPaper = { ruling: "Dotted", tint: "Sage", stationery: "Pixelated" };
+      notebook.pagePaper = { 0: { ruling: "Ruled", tint: "Ivory", cartoon: true } };
+      const migrated = validate(notebook);
+      return [migrated.defaultPaper, migrated.pagePaper[0]];
+    });
+    assert.deepEqual(paper, [{ ruling: "Dotted", tint: "Sage" }, { ruling: "Ruled", tint: "Ivory" }]);
     assert(!(await page.locator("#sheet").isVisible()));
-    await page.locator("#welcome-major").selectOption("Physics");
     await page.click("#new");
     await page.waitForSelector("#tool-table");
     await page.click("#tool-brush");
     await page.getByRole("button", { name: "Fineliner", exact: true }).click();
     assert.equal(await page.locator("#tool-brush use").getAttribute("href"), "./assets/tools.svg#fineliner");
     await page.keyboard.press("Escape");
-    const shelf = page.getByRole("toolbar", {name:"Major tools"});
-    assert.equal(await shelf.getByRole("button").count(), 6);
-    await shelf.getByRole("button", {name:"Momentum", exact:true}).click();
-    const kit = page.frameLocator(".subject-frame");
-    await kit.locator("#tool").waitFor();
-    assert.equal(await kit.locator("#tool").inputValue(), "Momentum");
-    await page.keyboard.press("Escape");
     await page.reload();
     assert(!(await page.locator("#sheet").isVisible()));
-    assert.equal(await page.getByLabel("Major", {exact:true}).inputValue(),"Physics");
     await page.click("#continue");
     await page.waitForSelector("#sheet");
     const b = await page.locator("#sheet").boundingBox();

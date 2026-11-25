@@ -220,27 +220,10 @@ import WebKit
       return preferences.toolAppearance(.eraser).symbol
     }
     expect(Set(eraseSymbols).count == 4, "each eraser mode has its own toolbar symbol")
-    expect(MajorCatalog.tools.count == 7 && MajorCatalog.tools.values.allSatisfy { $0.count == 6 },
-      "every major exposes six shared tools and None exposes no subject tools")
-    expect(ChromeTheme.icon("pen", color: .black)?.isValid == true && NotebookGlyph.mascotCG != nil,
-      "theme assets render as native artwork")
-    preferences.cartoonTheme = true
-    expect(PenPreferences(defaults: defaults).cartoonTheme, "appearance is shared by saved pen preferences")
-    preferences.restore()
-    expect(!preferences.cartoonTheme, "restore all settings returns to the Default appearance")
-    for theme in NotebookTheme.allCases {
-      preferences.theme = theme
-      ChromeTheme.current = theme
-      expect(
-        PenPreferences(defaults: defaults).theme == theme
-          && ChromeTheme.icon("pen", color: .black) != nil,
-        "native toolbar and saved theme: " + theme.rawValue)
-      if let family = [NotebookTheme.pixel: "Pixelify Sans", .cyber: "IBM Plex Mono", .tokyo: "Barlow Semi Condensed"][theme] {
-        expect(theme.font(12).familyName == family, "native " + family + " typeface loads offline")
-      }
-    }
-    preferences.restore()
-    ChromeTheme.current = .standard
+    let oldPaper = Data(#"{"ruling":"Dotted","tint":"Sage","stationery":"Pixelated"}"#.utf8)
+    let importedPaper = try JSONDecoder().decode(PaperDesign.self, from: oldPaper)
+    let paperKeys = try JSONSerialization.jsonObject(with: JSONEncoder().encode(importedPaper)) as! [String: String]
+    expect(paperKeys == ["ruling": "Dotted", "tint": "Sage"], "older paper keeps its ruling and tint")
     let resized = resizeFeedback(
       CGRect(x: 10, y: 10, width: 100, height: 50),
       targets: [CGRect(x: 140, y: 100, width: 100, height: 49)], fixed: CGPoint(x: 10, y: 10),
@@ -268,47 +251,23 @@ import WebKit
     let launchController = LauncherController(preferences: preferences, last: directory.appendingPathComponent("Example.gridnote")) { action, _ in launchAction = action }
     launchController.showWindow(nil)
     let launchWeb = launchController.window!.contentView as! WKWebView
-    for _ in 0..<100 where preferences.major != "Physics" {
-      pump(0.06)
-      launchWeb.evaluateJavaScript("(() => { const select = document.querySelector('#welcome-major'); if (select) { select.value = 'Physics'; select.dispatchEvent(new Event('change')); } })()")
+    var fits = false
+    for _ in 0..<100 where !fits {
+      pump(0.04)
+      launchWeb.evaluateJavaScript("""
+        (() => {
+          const card = document.querySelector(".start-card")?.getBoundingClientRect();
+          return !!card && card.x === 0 && card.y === 0 && Math.abs(card.width - innerWidth) < 1
+            && Math.abs(card.height - innerHeight) <= 1
+            && document.querySelector("#continue small")?.textContent === "Example";
+        })()
+        """) { result, _ in fits = result as? Bool == true }
     }
-    expect(preferences.major == "Physics" && launchAction.isEmpty, "startup major selection persists before a notebook is opened")
-    launchWeb.evaluateJavaScript("(() => {const s = document.querySelector('#welcome-theme'); s.value='70s Cartoon'; s.dispatchEvent(new Event('change'));})()")
-    for _ in 0..<100 where !preferences.cartoonTheme { pump(0.06) }
-    expect(preferences.cartoonTheme, "Mac launcher applies the selected artwork and persists its theme")
-    for theme in NotebookTheme.allCases {
-      for major in ["None", "Electrical Engineering"] {
-        let choose = """
-          for (const [id, value] of [["welcome-theme", "\(theme.rawValue)"], ["welcome-major", "\(major)"]]) {
-            const picker = document.getElementById(id);
-            picker.value = value;
-            picker.dispatchEvent(new Event("change"));
-          }
-          """
-        launchWeb.evaluateJavaScript(choose)
-        var fits = false
-        for _ in 0..<50 where !fits {
-          pump(0.04)
-          launchWeb.evaluateJavaScript("""
-            (() => {
-              const card = document.querySelector(".start-card").getBoundingClientRect();
-              return document.getElementById("welcome-theme").value === "\(theme.rawValue)"
-                && document.getElementById("welcome-major").value === "\(major)"
-                && card.x === 0 && card.y === 0 && Math.abs(card.width - innerWidth) < 1
-                && Math.abs(card.height - innerHeight) <= 1;
-            })()
-            """) { result, _ in fits = result as? Bool == true }
-        }
-        expect(fits, "Mac launcher window fits its card in " + theme.rawValue + " with " + major)
-      }
-    }
+    expect(fits && launchAction.isEmpty, "compact launcher fits its content and waits for a choice")
     launchWeb.evaluateJavaScript("document.querySelector('#continue').click()")
     for _ in 0..<100 where launchAction.isEmpty { pump(0.06) }
     expect(launchAction == "continue", "standalone Mac launcher continues only on request")
     launchController.dismiss()
-    preferences.cartoonTheme = false
-    ChromeTheme.cartoon = false
-    preferences.major = "None"
     win.setFrame(CGRect(x: 60, y: 40, width: 1024, height: 700), display: true)
     NSApp.activate(ignoringOtherApps: true)
     owner.showWindow(nil)
@@ -837,8 +796,7 @@ import WebKit
       "two exercises offer a choice on the page")
     solveButton.performClick(nil)
     let solve = StudySolver()
-    for theme in NotebookTheme.allCases {
-      ChromeTheme.current = theme
+    do {
       let message = "No supported problem found on this page. Type an equation, or add a code block in Text options."
       let short = StudyPanel(solver: solve, problem: nil, message: "Image text recognition was unavailable.")
       _ = short.view
@@ -853,9 +811,8 @@ import WebKit
         abs(b.minY - 12) < 1.1 && abs(view.bounds.maxY - t.maxY - 12) < 1.1 &&
         b.height >= body.intrinsicContentSize.height - 1 &&
         panel.preferredContentSize.height > short.preferredContentSize.height,
-        theme.rawValue + " Solve fits its wrapped message with even padding")
+        "Solve fits its wrapped message with even padding")
     }
-    ChromeTheme.current = preferences.theme
     expect(
       solve.result("2x + 3 = 11", code: false)?["answer"] as? String == "x = 4",
       "offline linear solution from shared parser")
@@ -915,8 +872,7 @@ import WebKit
     canvas.load(pdfBook)
     owner.togglePages(nil)
     let sidebar = visibleViews(PageSidebar.self, in: screen)[0]
-    for theme in NotebookTheme.allCases {
-      preferences.theme = theme
+    do {
       canvas.refreshTool()
       screen.layoutSubtreeIfNeeded()
       let actions = visibleViews(ChromeButton.self, in: sidebar).sorted { $0.tag < $1.tag }
@@ -929,9 +885,8 @@ import WebKit
         abs(frames[0].minX - listFrame.minX) <= 1 && abs(frames[3].maxX - listFrame.maxX) <= 1 &&
         abs(sidebar.bounds.maxX - frames[3].maxX - leading) <= 1 &&
         frames.allSatisfy { abs($0.width - frames[0].width) <= 1 && abs($0.midY - frames[0].midY) <= 1 },
-        theme.rawValue + " sidebar heading, four page actions and thumbnails share their margins")
+        "Sidebar heading, four page actions and thumbnails share their margins")
     }
-    preferences.theme = .standard
     canvas.refreshTool()
     try capture("page-sidebar.png")
     owner.organize("insert", page: 0)
@@ -951,72 +906,6 @@ import WebKit
       canvas.notebook.sourceIndex(on: 1) == 0 && canvas.notebook.objects.count == 1,
       "undo restores removed page and its writing")
     owner.togglePages(nil)
-    var inserted = ""
-    let kit = SubjectToolsController(major: "Computer Science", tool: "Two’s complement") { inserted = $0 }
-    let web = kit.view as! WKWebView
-    let kitPopover = NSPopover()
-    kitPopover.animates = false
-    kitPopover.contentViewController = kit
-    kitPopover.contentSize = kit.preferredContentSize
-    var measuredKitSize: CGSize?
-    kit.didResize = { [weak kitPopover] size in
-      kitPopover?.contentSize = size
-      measuredKitSize = size
-    }
-    kitPopover.show(relativeTo: .zero, of: screen, preferredEdge: .maxY)
-    for _ in 0..<100 where inserted.isEmpty || measuredKitSize == nil {
-      pump(0.06)
-      web.evaluateJavaScript("document.getElementById('insert')?.click()")
-    }
-    expect(
-      inserted.contains("11111101") && inserted.contains("0xFD"),
-      "native shortcut opens the chosen tool and inserts the signed binary result")
-    let validHeight = kitPopover.contentSize.height
-    web.evaluateJavaScript("""
-      const field = document.querySelector('#fields input');
-      field.value = ''; field.dispatchEvent(new Event('input'));
-      """)
-    for _ in 0..<100 where kitPopover.contentSize.height >= validHeight { pump(0.03) }
-    let errorHeight = kitPopover.contentSize.height
-    expect(errorHeight < validHeight, "major popover shrinks when an invalid input hides Insert")
-    web.evaluateJavaScript("field.value = '-3'; field.dispatchEvent(new Event('input'));")
-    for _ in 0..<100 where kitPopover.contentSize.height == errorHeight { pump(0.03) }
-    expect(kitPopover.contentSize.height == validHeight, "major popover grows back to fit the result")
-    kitPopover.close()
-    pump(0.1)
-    preferences.major = "Computer Science"
-    canvas.refreshTool()
-    let calculatorButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Two’s complement" }!
-    screen.layoutSubtreeIfNeeded()
-    calculatorButton.performClick(nil)
-    let actualPopover = owner.settingsPopover
-    expect(actualPopover?.isShown == true, "major shortcut opens an editable native popover")
-    let inputView = actualPopover!.contentViewController!.view as! WKWebView
-    func script(_ js: String) -> String? {
-      var finished = false, value: String?
-      inputView.evaluateJavaScript(js) { result, _ in value = result as? String; finished = true }
-      for _ in 0..<100 where !finished { pump(0.02) }
-      return value
-    }
-    let valueJS = "document.querySelector('#fields input')?.value"
-    for _ in 0..<100 where script(valueJS) != "-3" { pump(0.03) }
-    expect(inputView.undoManager !== canvas.history && inputView.undoManager?.groupsByEvent == true,
-      "calculator field has its own event-grouped undo history")
-    let beforeEdit = canvas.notebook
-    _ = script("const edit = document.querySelector('#fields input'); edit.focus(); edit.select(); document.execCommand('insertText', false, '5')")
-    for _ in 0..<100 where inputView.undoManager?.canUndo != true { pump(0.03) }
-    expect(script(valueJS) == "5" && inputView.undoManager?.canUndo == true, "WebKit registers an actual calculator edit")
-    owner.undoEdit(nil)
-    expect(script(valueJS) == "-3", "Edit menu Undo restores the calculator input")
-    for _ in 0..<100 where inputView.undoManager?.canRedo != true { pump(0.03) }
-    owner.redoEdit(nil)
-    expect(script(valueJS) == "5" && beforeEdit.objects == canvas.notebook.objects &&
-      beforeEdit.revision == canvas.notebook.revision, "calculator Redo keeps the notebook intact")
-    _ = script("document.querySelector('#insert').click()")
-    for _ in 0..<100 where canvas.notebook.objects == beforeEdit.objects { pump(0.03) }
-    expect(canvas.notebook.objects.count == beforeEdit.objects.count + 1, "insert after editing commits one notebook object")
-    owner.undoEdit(nil)
-    expect(canvas.notebook.objects == beforeEdit.objects, "Undo after closing the calculator returns to notebook history")
     let buttonState = TabletButtons()
     var mapped = buttonState
     expect(mapped.update(raw: [.penUpperSide], upper: nil, lower: nil), "raw upper switch edge")
@@ -1040,51 +929,29 @@ import WebKit
     if let demo = ProcessInfo.processInfo.environment["GRIDNOTE_DEMO"] {
       let sample = directory.appendingPathComponent("Series circuit.gridnote")
       try FileManager.default.copyItem(at: URL(fileURLWithPath: demo), to: sample)
-      preferences.major = "Electrical Engineering"
       owner.openFile(sample)
       canvas.refreshTool()
       win.setFrame(CGRect(x: 60, y: 40, width: 1060, height: 800), display: true)
       owner.fitWidth(nil)
       pump(0.2)
       try capture("demo-mac.png")
-      let editorial = PaperDesign(ruling: .grid, tint: .ivory, cartoon: true)
-      preferences.cartoonTheme = true
-      canvas.refreshTool()
-      canvas.setPaper(editorial, on: 0)
-      pump(0.2)
-      try capture("demo-cartoon-mac.png")
-      let themed = try canvas.renderer.export(canvas.notebook)
-      try themed.write(to: qa.appendingPathComponent("cartoon-paper.pdf"))
-      expect(PDFDocument(data: themed)?.pageCount == canvas.notebook.usedPages, "cartoon stationery exports with the notebook page count")
-      expect(win.appearance?.name == .aqua && canvas.notebook.paper(on: 0).cartoon == true, "theme and paper apply to the active Mac notebook")
-      canvas.history.undo()
-      preferences.cartoonTheme = false
-      canvas.refreshTool()
-
       let priorSize = win.frame.size
-      for theme in NotebookTheme.allCases {
-        preferences.theme = theme
-        canvas.refreshTool()
-        canvas.setPaper(.themed(theme), on: nil)
-        for width: CGFloat in [760, 1024] {
-          win.setContentSize(CGSize(width: width, height: 600))
-          win.contentView?.layoutSubtreeIfNeeded()
-          pump(0.05)
-          let buttons = visibleViews(ChromeButton.self, in: screen)
-          for group in Dictionary(grouping:buttons.filter { $0.superview is NSStackView }, by:{ObjectIdentifier($0.superview!) }).values {
-            let row = group.sorted { $0.frame.minX < $1.frame.minX }
-            if (row.first?.superview as? NSStackView)?.orientation == .horizontal {
-              expect(zip(row,row.dropFirst()).allSatisfy { $0.frame.maxX <= $1.frame.minX + 1 }, "Mac toolbar and major buttons have separate hit areas")
-            }
+      for width: CGFloat in [760, 1024] {
+        win.setContentSize(CGSize(width: width, height: 600))
+        win.contentView?.layoutSubtreeIfNeeded()
+        pump(0.05)
+        let buttons = visibleViews(ChromeButton.self, in: screen)
+        for group in Dictionary(grouping:buttons.filter { $0.superview is NSStackView }, by:{ObjectIdentifier($0.superview!) }).values {
+          let row = group.sorted { $0.frame.minX < $1.frame.minX }
+          if (row.first?.superview as? NSStackView)?.orientation == .horizontal {
+            expect(zip(row,row.dropFirst()).allSatisfy { $0.frame.maxX <= $1.frame.minX + 1 }, "Mac toolbar buttons have separate hit areas")
           }
-          expect(ChromeTheme.current == theme && win.contentView!.bounds.width >= 750, "active Mac editor lays out " + theme.rawValue + " at " + String(Int(width)) + " points")
         }
-        let pdf = try canvas.renderer.export(canvas.notebook)
-        expect(PDFDocument(data: pdf)?.pageCount == canvas.notebook.usedPages, theme.rawValue + " stationery exports all used pages")
-        canvas.history.undo()
+        expect(win.contentView!.bounds.width >= 750,  "active Mac editor lays out at " + String(Int(width)) + " points")
       }
+      let pdf = try canvas.renderer.export(canvas.notebook)
+      expect(PDFDocument(data: pdf)?.pageCount == canvas.notebook.usedPages, "sample exports all used pages")
       win.setFrame(CGRect(origin:win.frame.origin,size:priorSize), display:true)
-      preferences.theme = .standard
       canvas.refreshTool()
       try canvas.renderer.export(canvas.notebook).write(to: qa.appendingPathComponent("demo.pdf"))
       if ProcessInfo.processInfo.environment["GRIDNOTE_TEST_FULLSCREEN"] == "1" {

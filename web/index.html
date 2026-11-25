@@ -14,12 +14,11 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./style.css" />
     <link rel="stylesheet" href="./launcher.css" />
-    <link rel="stylesheet" href="./themes.css" />
   </head>
   <body class="launching">
     <header>
       <button id="files" title="Notebook menu" aria-label="Notebook menu">
-        <img src="./assets/default-pencil.png" alt="" /><span id="name">Gridnote</span
+        <img src="./assets/icon-192.png" alt="" /><span id="name">Gridnote</span
         ><span class="chevron">⌄</span>
       </button>
       <div class="spacer"></div>
@@ -49,7 +48,6 @@
         ☷
       </button>
     </nav>
-    <div id="subject-strip" role="toolbar" aria-label="Major tools" hidden></div>
     <main id="welcome" class="launcher-host"></main>
     <main id="stage" hidden>
       <aside id="pages-panel" aria-label="Pages" hidden>
@@ -143,8 +141,6 @@
       hidden
     /><input id="imagefile" type="file" accept="image/*" multiple hidden />
     <div id="notice" role="status" hidden></div>
-    <script src="./appearance.js"></script>
-    <script src="./majors.js"></script>
     <script src="./launcher.js"></script>
     <script src="./solver.js"></script>
     <script type="module" src="./app.mjs"></script>
