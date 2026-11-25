@@ -253,11 +253,17 @@ export function studyContent(pop, problem) {
   out.setAttribute("aria-live", "polite");
   const row = el("div");
   row.className = "choices";
-  const localTutor = [
-    "http://127.0.0.1:48765", "http://127.0.0.1:8765", "http://localhost:8765",
-  ].includes(location.origin) && new URL("./", location.href).pathname === "/";
+  const desktop = location.origin === "http://127.0.0.1:48765" && new URL("./", location.href).pathname === "/";
+  const localTutor = desktop || (["http://127.0.0.1:8765", "http://localhost:8765"].includes(location.origin) && new URL("./", location.href).pathname === "/");
+  const lifetime = new AbortController();
+  let current, connected = false;
+  const stop = () => { current?.abort(); current = undefined; };
+  pop.addEventListener("panelclose", () => { stop(); lifetime.abort(); }, { once: true });
   const result = () => GridnoteSolve.solve(input.value, problem.code);
   const local = () => {
+    stop();
+    if (ai) ai.textContent = "Ask AI";
+    input.readOnly = false;
     const r = result();
     out.replaceChildren();
     if (r?.answer != null) {
@@ -269,8 +275,8 @@ export function studyContent(pop, problem) {
         el(
           "p",
           localTutor
-            ? "Use Ask AI for a worked explanation, or copy this exercise to ChatGPT."
-            : "Copy this exercise to ChatGPT for a worked explanation. You can edit the recognized text above.",
+            ? "Click Ask AI for a worked explanation."
+            : "Edit the exercise and try Solve again, or copy it to use elsewhere.",
         ),
       );
   };
@@ -280,96 +286,116 @@ export function studyContent(pop, problem) {
     row.append(b);
     return b;
   };
+  let ai, accountRow, status, options;
+  row.classList.add("study-actions");
+  const updateAccount = (value) => {
+    connected = value;
+    if (!accountRow) return;
+    status.textContent = value ? "Using your ChatGPT plan" : "Ask AI uses your ChatGPT plan";
+    options.querySelector('[value="disconnect"]').hidden = !value;
+    options.querySelector('[value="connect"]').hidden = value;
+  };
+  async function account(body, signal) {
+    const response = await fetch("./api/chatgpt", {
+      method: "POST", signal,
+      headers: { "Content-Type": "application/json", "X-Gridnote-Request": "1" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw Error("Gridnote could not reach its account component.");
+    return response.json();
+  }
+  async function requestSolution(mode) {
+    stop();
+    const controller = new AbortController();
+    current = controller;
+    const signal = controller.signal;
+    const text = input.value;
+    const timer = setTimeout(() => controller.abort(), 420000);
+    input.readOnly = true;
+    ai.textContent = "Cancel";
+    try {
+      if (desktop && mode !== "server") {
+        if (mode === "disconnect" || mode === "connect" || !connected) {
+          const disconnect = mode === "disconnect";
+          out.textContent = disconnect ? "Disconnecting…" : "Approve Gridnote in your browser. Your answer will appear here.";
+          const connection = await account({ action: disconnect ? "disconnect" : "connect" }, signal);
+          if (signal.aborted) return;
+          updateAccount(connection.connected);
+          if (connection.error) throw Error(connection.error);
+          if (mode !== "ask") {
+            out.textContent = disconnect ? "Disconnected from ChatGPT." : "Connected. Ask AI uses your ChatGPT plan.";
+            return;
+          }
+        }
+      }
+      out.textContent = desktop && mode !== "server" ? "Solving with your ChatGPT plan…" : "Getting an explanation…";
+      const body = { text, image: crop?.toDataURL("image/jpeg", 0.86), kind: result()?.kind || "Question" };
+      let reply;
+      if (desktop && mode !== "server") {
+        reply = await account({ ...body, action: "ask" }, signal);
+        if (signal.aborted) return;
+        updateAccount(reply.connected);
+      } else {
+        const response = await fetch("./api/explain", {
+          method: "POST", signal, headers: { "Content-Type": "application/json", "X-Gridnote-Request": "1" },
+          body: JSON.stringify(body),
+        });
+        if (!response.headers.get("content-type")?.includes("application/json")) throw Error("The optional study server is unavailable.");
+        reply = await response.json();
+      }
+      if (!signal.aborted) out.textContent = reply.error || reply.answer || "No answer was returned.";
+    } catch (e) {
+      if (current === controller) out.textContent = signal.aborted ? "Request canceled." : e.message;
+    } finally {
+      clearTimeout(timer);
+      if (current === controller) { current = undefined; input.readOnly = false; ai.textContent = "Ask AI"; }
+    }
+  }
   action("Solve", local);
   if (localTutor) {
-    const ai = action("Ask AI", async () => {
-      ai.disabled = true;
-      out.textContent = "Getting an explanation…";
-      try {
-        const response = await fetch("./api/explain", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Gridnote-Request": "1",
-          },
-          body: JSON.stringify({
-            text: input.value,
-            image: crop?.toDataURL("image/jpeg", 0.86),
-            kind: result()?.kind || "Question",
-          }),
-          signal: AbortSignal.timeout(90000),
-        });
-        if (!response.headers.get("content-type")?.includes("application/json"))
-          throw Error(
-            "This installation has no AI server. Use Copy to ChatGPT, or start the study server in the README.",
-          );
-        const data = await response.json();
-        if (!response.ok)
-          throw Error(data.error || "The AI server could not answer.");
-        out.textContent = data.answer;
-      } catch (e) {
-        out.textContent = e.message;
-      } finally {
-        ai.disabled = false;
-      }
+    ai = action("Ask AI", () => {
+      if (current) { current.abort(); return; }
+      requestSolution("ask");
     });
-    ai.title =
-      "Send the selected exercise text and its preview image to your configured AI server";
+    ai.title = desktop ? "Send this exercise and its selected image using your ChatGPT plan" : "Ask the configured study server";
   }
-  action("Copy to ChatGPT", () => {
-    const prompt = GridnoteSolve.prompt(
-      input.value,
-      result()?.kind || "Question",
-    );
-    if (
-      crop &&
-      typeof ClipboardItem !== "undefined" &&
-      navigator.clipboard?.write
-    ) {
-      const blob = new Promise((res, rej) =>
-        crop.toBlob(
-          (b) => (b ? res(b) : rej(Error("Cannot copy crop"))),
-          "image/png",
-        ),
-      );
-      const pending = navigator.clipboard.write([
-        new ClipboardItem({
-          "image/png": blob,
-          "text/plain": new Blob([prompt], { type: "text/plain" }),
-        }),
-      ]);
-      window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
-      pending
-        .then(
-          () =>
-            (out.textContent = "Exercise image copied. Paste it into ChatGPT."),
-        )
-        .catch(() => {
-          out.textContent =
-            "Copy the exercise image from the preview and paste it into ChatGPT.";
-        });
-      return;
-    }
-    window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
-    if (!navigator.clipboard) {
-      input.focus();
-      input.select();
-      out.textContent = "Copy the selected exercise and paste it into ChatGPT.";
-      return;
-    }
-    navigator.clipboard
-      ?.writeText(prompt)
-      .then(() => {
-        out.textContent = "Exercise copied. Paste it into ChatGPT.";
-      })
-      .catch(() => {
-        input.focus();
-        input.select();
-        out.textContent =
-          "Copy the selected exercise and paste it into ChatGPT.";
-      });
+  const copy = action("Copy", async () => {
+    const fallback = () => {
+      input.focus(); input.select();
+      out.textContent = "The exercise text is selected. Use your device’s Copy command.";
+    };
+    try {
+      if (crop && typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        const blob = new Promise((resolve, reject) => crop.toBlob(b => b ? resolve(b) : reject(Error()), "image/png"));
+        const formats = { "image/png": blob };
+        if (input.value) formats["text/plain"] = new Blob([input.value], { type: "text/plain" });
+        await navigator.clipboard.write([new ClipboardItem(formats)]);
+      } else if (navigator.clipboard && input.value) {
+        await navigator.clipboard.writeText(input.value);
+      } else { fallback(); return; }
+      copy.textContent = "Copied";
+      setTimeout(() => { copy.textContent = "Copy"; }, 1400);
+    } catch { fallback(); }
   });
-  pop.append(input, row, out);
+  copy.title = "Copy the exercise text and selected image";
+  pop.append(input, row);
+  if (desktop) {
+    accountRow = el("div"); accountRow.className = "study-account";
+    status = el("small"); options = el("select");
+    options.setAttribute("aria-label", "ChatGPT account options");
+    for (const [key, name] of [["","Account"],["connect","Continue with ChatGPT"],["usage","Manage usage…"],["disconnect","Disconnect ChatGPT"],["server","Ask using study server"]]) options.add(new Option(name,key));
+    options.onchange = () => {
+      const choice = options.value; options.value = "";
+      if (choice === "usage") window.open("https://chatgpt.com/settings/usage", "_blank", "noopener,noreferrer");
+      else if (choice) requestSolution(choice);
+    };
+    accountRow.append(status,options); pop.append(accountRow);
+    updateAccount(false);
+    account({action:"status"}, lifetime.signal).then(value => {
+      if (!current && !lifetime.signal.aborted) updateAccount(value.connected);
+    }).catch(() => {});
+  }
+  pop.append(out);
   if (problem.review) {
     out.textContent =
       "Check the recognized text against the image, then choose Solve.";

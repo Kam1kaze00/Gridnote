@@ -7,6 +7,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable, cache: false }
+      - run: cd Desktop && go test ./account
       - run: ./build.sh
       - run: Tests/native.sh
   portable:

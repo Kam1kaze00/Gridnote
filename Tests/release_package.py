@@ -1,8 +1,10 @@
 """Start the release ZIP for this runner's OS and CPU architecture."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from zipfile import ZipFile
+import json
+import os
 import platform
 import subprocess
 import sys
@@ -17,6 +19,11 @@ def check_mac(packages, folder, machine):
     subprocess.run(["codesign", "--verify", "--strict", app], check=True)
     binary = app / "Contents/MacOS/Gridnote"
     subprocess.run(["lipo", binary, "-verify_arch", arch], check=True)
+    helper = app / "Contents/MacOS/GridnoteChatGPT"
+    subprocess.run(["lipo", helper, "-verify_arch", arch], check=True)
+    subprocess.run(["codesign", "--verify", "--strict", helper], check=True)
+    status = subprocess.run([helper], input=b'{"action":"status"}', env=dict(os.environ, HOME=str(folder)), capture_output=True, timeout=10, check=True)
+    assert json.loads(status.stdout) == {"connected": False}
     with subprocess.Popen([binary]) as started:
         try:
             # Inspect the window geometry without opening or writing a notebook.
@@ -48,7 +55,9 @@ def check_desktop(packages, folder, system, machine):
     with ZipFile(packages / f"Gridnote-{system}-{arch}.zip") as archive:
         app = Path(archive.extract(filename, folder))
     app.chmod(0o755)
-    with subprocess.Popen([app, "--no-open"]) as started:
+    config = folder / "user-config"
+    config.mkdir()
+    with subprocess.Popen([app, "--no-open"], env=dict(os.environ, XDG_CONFIG_HOME=str(config), LOCALAPPDATA=str(config))) as started:
         try:
             origin = "http://127.0.0.1:48765/"
             for _ in range(80):
@@ -62,6 +71,10 @@ def check_desktop(packages, folder, system, machine):
                     time.sleep(0.15)
             else:
                 raise RuntimeError("Desktop launcher did not start")
+            query = Request(origin + "api/chatgpt", data=b'{"action":"status"}', headers={
+                "Origin": origin.rstrip("/"), "X-Gridnote-Request": "1", "Content-Type": "application/json"})
+            with urlopen(query, timeout=5) as result:
+                assert json.load(result) == {"connected": False}
             for path, marker in [("", b'id="welcome"'), ("launcher.js", b"Continue notebook"),
                                  ("assets/icon-192.png", b"PNG"), ("assets/tools.svg", b'symbol id="axes"')]:
                 with urlopen(origin + path, timeout=5) as response:

@@ -797,6 +797,28 @@ import WebKit
     solveButton.performClick(nil)
     let solve = StudySolver()
     do {
+      let panel = StudyPanel(solver: solve, problem: StudyProblem(text: "5x + 4 = 3", frame: .zero, code: false), message: "")
+      var calls: [String] = []
+      panel.sendToAccount = { body, done in
+        let action = body["action"]!
+        calls.append(action)
+        DispatchQueue.main.async { done(ChatGPTReply(connected: action != "status", answer: action == "ask" ? "x = -0.2" : nil)) }
+        return ChatGPTCall()
+      }
+      let view = panel.view
+      view.setFrameSize(panel.preferredContentSize)
+      view.layoutSubtreeIfNeeded()
+      let buttons = visibleViews(NSButton.self, in: view)
+      let actions = ["Solve","Ask AI","Copy"].map { name in buttons.first { $0.title == name }! }
+      let rects = actions.map { $0.convert($0.bounds, to: view) }
+      expect(rects.allSatisfy { abs($0.midY-rects[0].midY) <= 1 && abs($0.width-rects[0].width) <= 1 && view.bounds.contains($0) },
+        "Solve, Ask AI and Copy fit in one evenly aligned row")
+      actions[1].performClick(nil)
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+      expect(calls == ["status","connect","ask"] && visibleViews(NSTextView.self, in: view).contains { $0.string == "x = -0.2" },
+        "one Ask AI click continues after sign-in and puts the answer in the original popup")
+    }
+    do {
       let message = "No supported problem found on this page. Type an equation, or add a code block in Text options."
       let short = StudyPanel(solver: solve, problem: nil, message: "Image text recognition was unavailable.")
       _ = short.view

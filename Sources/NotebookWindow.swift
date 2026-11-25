@@ -1052,6 +1052,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
 
   func popoverWillClose(_ notification: Notification) {
     if let closing = notification.object as? NSPopover, closing === settingsPopover {
+      (closing.contentViewController as? StudyPanel)?.cancelAI()
       if closing.contentViewController is StudyPanel && canvas.studyProblems.count == 1 {
         canvas.studyProblems = []
         solveButton.selected = false
@@ -1108,6 +1109,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     let panel = NSPopover()
     panel.behavior = .transient
     panel.appearance = NSAppearance(named: .darkAqua)
+    controller.keepOpenDuringSignIn = { [weak panel] keep in panel?.behavior = keep ? .applicationDefined : .transient }
     panel.contentViewController = controller
     panel.contentSize = controller.preferredContentSize
     panel.delegate = self

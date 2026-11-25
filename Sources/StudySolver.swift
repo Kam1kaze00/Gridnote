@@ -24,10 +24,6 @@ final class StudySolver {
     js.objectForKeyedSubscript("GridnoteSolve")?.invokeMethod(
       "solve", withArguments: [text, code])?.toDictionary() as? [String: Any]
   }
-  func prompt(_ text: String, kind: String) -> String {
-    js.objectForKeyedSubscript("GridnoteSolve")?.invokeMethod(
-      "prompt", withArguments: [text, kind])?.toString() ?? text
-  }
   func candidates(
     _ notebook: Notebook, page: Int, done: @escaping ([StudyProblem], String?) -> Void
   ) {
@@ -223,6 +219,13 @@ final class StudyPanel: NSViewController {
   private var ask: NSButton!
   private var cropImage: NSImage?
   private var request: URLSessionDataTask?
+  private var accountCall: ChatGPTCall?
+  private var operation: UUID?
+  private var connected = false
+  private let accountLabel = chromeLabel("", size: 11)
+  private let accountMenu = NSPopUpButton(frame: .zero, pullsDown: true)
+  var keepOpenDuringSignIn: ((Bool) -> Void)?
+  var sendToAccount = ChatGPTCall.send
   init(solver: StudySolver, problem: StudyProblem?, message: String) {
     self.solver = solver
     self.problem = problem
@@ -230,7 +233,17 @@ final class StudyPanel: NSViewController {
     super.init(nibName: nil, bundle: nil)
   }
   required init?(coder: NSCoder) { nil }
-  deinit { request?.cancel() }
+  deinit { request?.cancel(); accountCall?.cancel() }
+  func cancelAI() {
+    operation = nil
+    request?.cancel()
+    accountCall?.cancel()
+    accountCall = nil
+    keepOpenDuringSignIn?(false)
+    ask?.title = "Ask AI"
+    ask?.isEnabled = true
+    entry.isEditable = true
+  }
   override func loadView() {
     view = Surface(chromeToolbar)
     let stack = chromeStack([], spacing: 8, horizontal: false)
@@ -252,7 +265,7 @@ final class StudyPanel: NSViewController {
       stack.addArrangedSubview(label)
       return
     }
-    stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 305).isActive = true
+    stack.widthAnchor.constraint(equalToConstant: 320).isActive = true
     func area(_ text: NSTextView, _ height: CGFloat, _ editable: Bool) -> NSScrollView {
       let scroll = NSScrollView()
       scroll.hasVerticalScroller = true
@@ -286,11 +299,37 @@ final class StudyPanel: NSViewController {
     entry.string = problem.text
     let solve = NSButton(title: "Solve", target: self, action: #selector(calculate))
     ask = NSButton(title: "Ask AI", target: self, action: #selector(askAI))
-    ask.toolTip =
-      "Send the selected exercise and its visible crop to your configured OpenAI study server"
-    let chat = NSButton(title: "Copy to ChatGPT", target: self, action: #selector(openChat))
-    chat.toolTip = "Copy this exercise and open ChatGPT to paste it"
-    stack.addArrangedSubview(chromeStack([solve, ask, chat], spacing: 5))
+    ask.toolTip = "Send this exercise and its selected image using your ChatGPT plan"
+    let copy = NSButton(title: "Copy", target: self, action: #selector(copyExercise(_:)))
+    copy.toolTip = "Copy the exercise text and selected image"
+    let actions = chromeStack([solve, ask, copy], spacing: 5)
+    actions.distribution = .fillEqually
+    stack.addArrangedSubview(actions)
+    actions.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    accountMenu.controlSize = .small
+    accountMenu.setAccessibilityLabel("ChatGPT account options")
+    accountMenu.toolTip = "ChatGPT sign-in, usage and study server"
+    accountMenu.addItem(withTitle: "Account")
+    func item(_ title: String, _ action: Selector) {
+      let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+      entry.target = self
+      accountMenu.menu?.addItem(entry)
+    }
+    item("Continue with ChatGPT", #selector(connectAccount))
+    item("Manage usage…", #selector(manageUsage))
+    item("Disconnect ChatGPT", #selector(disconnectAccount))
+    accountMenu.menu?.addItem(.separator())
+    item("Ask using study server", #selector(askServer))
+    let spacer = NSView()
+    spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    let accountRow = chromeStack([accountLabel, spacer, accountMenu], spacing: 3)
+    stack.addArrangedSubview(accountRow)
+    accountRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    updateAccount(false)
+    _ = sendToAccount(["action": "status"]) { [weak self] status in
+      guard let self, self.operation == nil else { return }
+      self.updateAccount(status.connected)
+    }
     let output = area(resultView, 134, false)
     stack.addArrangedSubview(output)
     output.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -304,8 +343,7 @@ final class StudyPanel: NSViewController {
     }
   }
   @objc private func calculate() {
-    request?.cancel()
-    ask.isEnabled = true
+    cancelAI()
     if let r = solver.result(entry.string, code: problem?.code ?? false),
       let answer = r["answer"] as? String
     {
@@ -315,21 +353,98 @@ final class StudyPanel: NSViewController {
         .joined(separator: "\n")
     } else {
       resultView.string =
-        "Use Ask AI for a worked explanation, or copy the selected text to ChatGPT. You can correct the recognized text above."
+        "Click Ask AI for a worked explanation. You can edit the exercise above first."
     }
   }
-  @objc private func openChat() {
-    let kind =
-      problem?.code == true
-      ? "Code" : (solver.result(entry.string, code: false)?["kind"] as? String ?? "Question")
+  private func updateAccount(_ value: Bool) {
+    connected = value
+    accountLabel.stringValue = value ? "Using your ChatGPT plan" : "Ask AI uses your ChatGPT plan"
+    accountMenu.item(withTitle: "Disconnect ChatGPT")?.isHidden = !value
+    accountMenu.item(withTitle: "Continue with ChatGPT")?.isHidden = value
+  }
+
+  @objc private func copyExercise(_ sender: NSButton) {
+    let item = NSPasteboardItem()
+    if let cropImage, let data = cropImage.tiffRepresentation { item.setData(data, forType: .tiff) }
+    if !entry.string.isEmpty { item.setString(entry.string, forType: .string) }
     NSPasteboard.general.clearContents()
-    if let cropImage, let data = cropImage.tiffRepresentation {
-      NSPasteboard.general.setData(data, forType: .tiff)
+    if NSPasteboard.general.writeObjects([item]) {
+      sender.title = "Copied"
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak sender] in sender?.title = "Copy" }
     }
-    NSPasteboard.general.setString(solver.prompt(entry.string, kind: kind), forType: .string)
-    NSWorkspace.shared.open(URL(string: "https://chatgpt.com/")!)
   }
+
+  @objc private func manageUsage() {
+    NSWorkspace.shared.open(URL(string: "https://chatgpt.com/settings/usage")!)
+  }
+
+  private func accountOperation(_ body: [String: String], id: UUID, then: @escaping (ChatGPTReply) -> Void) {
+    accountCall = sendToAccount(body) { [weak self] reply in
+      guard let self, self.operation == id else { return }
+      self.accountCall = nil
+      self.updateAccount(reply.connected)
+      then(reply)
+    }
+  }
+
+  private func finishAI(_ text: String) {
+    cancelAI()
+    resultView.string = text
+    resultView.scrollToBeginningOfDocument(nil)
+  }
+
   @objc private func askAI() {
+    if operation != nil { finishAI("Request canceled."); return }
+    startAccount(solveAfterConnecting: true)
+  }
+  @objc private func connectAccount() { startAccount(solveAfterConnecting: false) }
+
+  private func startAccount(solveAfterConnecting: Bool) {
+    cancelAI()
+    var exercise = ["action": "ask", "text": entry.string]
+    if let crop = cropImage?.tiffRepresentation, let rep = NSBitmapImageRep(data: crop),
+       let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.86]) {
+      exercise["image"] = "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+    if solveAfterConnecting && entry.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && exercise["image"] == nil {
+      finishAI("Enter an exercise or select an image."); return
+    }
+    let id = UUID()
+    operation = id
+    ask.title = "Cancel"
+    entry.isEditable = false
+    let solve: () -> Void = { [weak self] in
+      guard let self else { return }
+      self.resultView.string = "Solving with your ChatGPT plan…"
+      self.accountOperation(exercise, id: id) { [weak self] reply in
+        self?.finishAI(reply.error ?? reply.answer ?? "ChatGPT returned an empty answer.")
+      }
+    }
+    if connected && solveAfterConnecting { solve(); return }
+    keepOpenDuringSignIn?(true)
+    resultView.string = "Approve Gridnote in your browser. Your answer will appear here."
+    accountOperation(["action": "connect"], id: id) { [weak self] reply in
+      guard let self else { return }
+      NSApp.activate(ignoringOtherApps: true)
+      self.view.window?.makeKeyAndOrderFront(nil)
+      if let error = reply.error { self.finishAI(error); return }
+      if solveAfterConnecting { solve() } else { self.finishAI("Connected. Ask AI uses your ChatGPT plan for the selected exercise.") }
+    }
+  }
+
+  @objc private func disconnectAccount() {
+    cancelAI()
+    let id = UUID(); operation = id
+    ask.isEnabled = false
+    accountOperation(["action": "disconnect"], id: id) { [weak self] reply in
+      self?.finishAI(reply.error ?? "Disconnected from ChatGPT.")
+    }
+  }
+
+  @objc private func askServer() {
+    cancelAI()
+    let id = UUID()
+    operation = id
     let source = entry.string
     var req = URLRequest(url: URL(string: "http://127.0.0.1:8765/api/explain")!)
     req.httpMethod = "POST"
@@ -349,12 +464,10 @@ final class StudyPanel: NSViewController {
     resultView.string = "Getting an explanation…"
     request = URLSession.shared.dataTask(with: req) { [weak self] data, _, err in
       DispatchQueue.main.async {
-        guard let self, (err as? URLError)?.code != .cancelled else { return }
+        guard let self, self.operation == id, (err as? URLError)?.code != .cancelled else { return }
         self.ask.isEnabled = true
         let body = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] }
-        self.resultView.string =
-          body?["answer"] ?? body?["error"]
-          ?? "The local AI server is unavailable. Use Copy to ChatGPT, or start the study server described in the README."
+        self.finishAI(body?["answer"] ?? body?["error"] ?? "The study server is unavailable. Use Ask AI to connect with ChatGPT.")
       }
     }
     request?.resume()

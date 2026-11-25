@@ -16,6 +16,11 @@ cp web/solver.js "$bundle/Contents/Resources/solver.js"
 cp scripts/Info.plist "$bundle/Contents/Info.plist"
 arch="${GRIDNOTE_ARCH:-$(uname -m)}"
 case "$arch" in arm64|x86_64) ;; *) echo "Unsupported Mac architecture" >&2; exit 1 ;; esac
+go_arch="$arch"
+[[ "$go_arch" == x86_64 ]] && go_arch=amd64
+(cd Desktop && GOOS=darwin GOARCH="$go_arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$bundle/Contents/MacOS/GridnoteChatGPT" ./chatgpt)
+python3 scripts/account_notices.py "$bundle/Contents/Resources/licenses"
+codesign --force --sign - "$bundle/Contents/MacOS/GridnoteChatGPT"
 swiftc -swift-version 5 -O -target "${arch}-apple-macos13.0" Sources/*.swift -o "$bundle/Contents/MacOS/Gridnote"
 swiftc Sources/Chrome.swift scripts/Icon.swift -o "$build_tmp/icon"
 "$build_tmp/icon" "$build_tmp/Gridnote.iconset"
