@@ -1,0 +1,67 @@
+name: Test desktop downloads
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test, including drafts
+        required: true
+        type: string
+      manifest_sha256:
+        description: SHA-256 of the locally verified SHA256SUMS.txt
+        required: true
+        type: string
+
+permissions: {}
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    # A draft is visible to contributors with push access. Only gh receives this token.
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch candidate from GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MANIFEST_DIGEST: ${{ inputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$MANIFEST_DIGEST" =~ ^[a-fA-F0-9]{64}$ ]]
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir candidate
+          cd candidate
+          echo "$MANIFEST_DIGEST  SHA256SUMS.txt" | sha256sum --check --strict
+          sha256sum --check --strict SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-packages
+          path: |
+            candidate/Gridnote-macOS-*.zip
+            candidate/Gridnote-linux-*.zip
+            candidate/Gridnote-windows-*.zip
+          retention-days: 1
+          compression-level: 0
+  start:
+    needs: download
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-packages
+          path: packages
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python Tests/release_package.py packages
+      - if: matrix.os == 'macos-15-intel'
+        run: Tests/native.sh
