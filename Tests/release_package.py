@@ -16,7 +16,7 @@ def check_mac(packages, folder, machine):
     assert (folder / "Open Gridnote on Mac.txt").is_file()
     subprocess.run(["codesign", "--verify", "--strict", app], check=True)
     binary = app / "Contents/MacOS/Gridnote"
-    subprocess.run(["lipo", "-verify_arch", arch, binary], check=True)
+    subprocess.run(["lipo", binary, "-verify_arch", arch], check=True)
     with subprocess.Popen([binary]) as started:
         try:
             # Inspect the window geometry without opening or writing a notebook.

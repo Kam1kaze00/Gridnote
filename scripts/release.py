@@ -41,7 +41,7 @@ def package(ref, destination):
             subprocess.run(["zsh", "build.sh", str(folder)], cwd=checkout, check=True,
                            env=dict(os.environ, GRIDNOTE_ARCH=arch))
             subprocess.run(["codesign", "--verify", "--strict", str(app)], check=True)
-            subprocess.run(["lipo", "-verify_arch", arch, str(app / "Contents/MacOS/Gridnote")], check=True)
+            subprocess.run(["lipo", str(app / "Contents/MacOS/Gridnote"), "-verify_arch", arch], check=True)
             shutil.copyfile(checkout / "docs/Open Gridnote on Mac.txt", folder / "Open Gridnote on Mac.txt")
             subprocess.run(["ditto", "-c", "-k", str(folder),
                             str(archives / f"Gridnote-macOS-{arch}.zip")], check=True)
