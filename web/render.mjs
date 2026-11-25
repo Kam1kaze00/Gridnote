@@ -73,19 +73,21 @@ export function imageOf(o, onReady) {
   const data = o.content.image._0;
   let existing = images.get(o.id);
   if (!existing || existing.data !== data) {
-    const img = new Image();
+    const img = new Image(), listeners = new Set();
     const promise = new Promise((resolve, reject) => {
       img.onload = () => {
-        onReady?.();
         resolve(img);
+        for (const ready of listeners) ready();
+        listeners.clear();
       };
-      img.onerror = () => reject(Error("Invalid embedded image."));
+      img.onerror = () => { listeners.clear(); reject(Error("Invalid embedded image.")); };
     });
     promise.catch(() => {});
-    existing = { data, img, promise };
+    existing = { data, img, promise, listeners };
     images.set(o.id, existing);
     img.src = "data:image/png;base64," + data;
   }
+  if (onReady && !existing.img.complete) existing.listeners.add(onReady);
   return existing;
 }
 export function resetImageCache() {

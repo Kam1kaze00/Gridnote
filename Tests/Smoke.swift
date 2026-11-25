@@ -544,10 +544,16 @@ import WebKit
       "export uses exact physical A4 pages")
     expect(
       pdf.page(at: 0)?.string?.contains("v = 6 m/s") == true, "typed text remains readable in PDF")
+    owner.jumpToPage(1)
     owner.previewPDF(nil)
     pump(0.55)
     expect(win.attachedSheet?.title == "PDF Preview", "preview opens a native PDF sheet")
-    if let sheet = win.attachedSheet { win.endSheet(sheet, returnCode: .cancel) }
+    if let sheet = win.attachedSheet {
+      let pdfView = visibleViews(PDFView.self, in: sheet.contentView!).first
+      expect(pdfView?.currentPage.flatMap { pdfView?.document?.index(for: $0) } == 1,
+        "preview opens at the current writing page")
+      win.endSheet(sheet, returnCode: .cancel)
+    }
     pump(0.1)
     let origin = clip.bounds.origin * (1 / canvas.scale)
     let zoom = canvas.frame.width / clip.bounds.width
@@ -734,6 +740,30 @@ import WebKit
       for: CGRect(x: 102, y: 200, width: 50, height: 30),
       near: [CGRect(x: 100, y: 100, width: 50, height: 20)], tolerance: 4)
     expect(snap.0.x == -2 && snap.1.count == 1, "alignment snaps an edge within screen tolerance")
+    let solveButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Solve" }!
+    var exerciseBook = Notebook()
+    let equation = NoteObject(frame: CGRect(x: 45, y: 100, width: 160, height: 25),
+      content: .text("5x + 4 = 3", InkColor.colors[0].1, 14))
+    exerciseBook.objects = [equation]
+    canvas.load(exerciseBook)
+    owner.jumpToPage(0)
+    solveButton.performClick(nil)
+    pump(0.35)
+    expect(owner.settingsPopover?.isShown == true && canvas.studyProblems.count == 1,
+      "one exercise opens directly from Solve")
+    owner.settingsPopover?.performClose(nil)
+    pump(0.25)
+    expect(canvas.studyProblems.isEmpty, "closing one answer returns to writing")
+    var second = equation.transformed(from: .zero, offset: CGPoint(x: 0, y: 120))
+    second.id = UUID()
+    exerciseBook.objects.append(second)
+    exerciseBook.revision += 1
+    canvas.load(exerciseBook)
+    solveButton.performClick(nil)
+    pump(0.35)
+    expect(canvas.studyProblems.count == 2 && owner.settingsPopover?.isShown != true,
+      "two exercises offer a choice on the page")
+    solveButton.performClick(nil)
     let solve = StudySolver()
     for theme in NotebookTheme.allCases {
       ChromeTheme.current = theme

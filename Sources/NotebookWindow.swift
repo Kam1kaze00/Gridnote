@@ -26,6 +26,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
   private var preparingPDF = false
   private lazy var studySolver = StudySolver()
   private var scanID = UUID()
+  private var lastScan: (id: UUID, revision: UInt64, page: Int, problems: [StudyProblem])?
   var requestLauncher: (() -> Void)?
   private let subjectScroll = NSScrollView()
   private var subjectHeight: NSLayoutConstraint!
@@ -495,6 +496,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     _ notebook: Notebook, at url: URL, recovered: Bool = false, position: ViewPosition? = nil
   ) {
     framing = true
+    scanID = UUID()
+    lastScan = nil
+    solveButton.isEnabled = true
+    solveButton.caption = "Solve"
+    solveButton.selected = false
     notebookURL = url
     lastSavedRevision = recovered ? nil : notebook.revision
     notebookSaveError = nil
@@ -633,6 +639,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
   }
 
   private func onEdit() {
+    lastScan = nil
     guard let url = notebookURL else { return }
     updatePage()
     updateHistory()
@@ -828,7 +835,13 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
   private func updatePage() {
     let visible = canvas.visibleRect
     let focusY = max(0, visible.minY + min(visible.height * 0.24, 85))
-    page = max(0, min(canvas.pageCount - 1, Int(floor(focusY / paperSize.height))))
+    let nextPage = max(0, min(canvas.pageCount - 1, Int(floor(focusY / paperSize.height))))
+    if nextPage != page, !canvas.studyProblems.isEmpty {
+      canvas.studyProblems = []
+      solveButton.selected = false
+      if settingsPopover?.contentViewController is StudyPanel { settingsPopover?.performClose(nil) }
+    }
+    page = nextPage
     pagesSidebar.update(canvas.notebook, current: page)
     pageLabel.stringValue = "Page \(page + 1)"
     paperButton?.caption =
@@ -1121,6 +1134,10 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
   }
   func popoverWillClose(_ notification: Notification) {
     if let closing = notification.object as? NSPopover, closing === settingsPopover {
+      if closing.contentViewController is StudyPanel && canvas.studyProblems.count == 1 {
+        canvas.studyProblems = []
+        solveButton.selected = false
+      }
       settingsPopover = nil
       updateHistory()
     }
@@ -1147,10 +1164,11 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     guard canvas.active else { return }
     canvas.finishText()
     canvas.finishGesture()
+    let wasShowingResults = !canvas.studyProblems.isEmpty
     settingsPopover?.performClose(nil)
     let id = UUID()
     scanID = id
-    if !canvas.studyProblems.isEmpty {
+    if wasShowingResults {
       canvas.studyProblems = []
       solveButton.selected = false
       return
@@ -1158,25 +1176,29 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     solveButton.isEnabled = false
     solveButton.caption = "Scanning…"
     let value = canvas.notebook
+    let tool = canvas.tool
     let index = page
-    studySolver.candidates(value, page: index) { [weak self] items, error in
+    let complete: ([StudyProblem], String?) -> Void = { [weak self] items, error in
       guard let self, self.scanID == id else { return }
       self.solveButton.isEnabled = true
       self.solveButton.caption = "Solve"
-      guard self.page == index, self.canvas.notebook.id == value.id,
-        self.canvas.notebook.revision == value.revision
-      else { return }
+      guard self.page == index, self.canvas.tool == tool, self.canvas.notebook.id == value.id,
+        self.canvas.notebook.revision == value.revision else { return }
+      if error == nil { self.lastScan = (value.id, value.revision, index, items) }
       self.canvas.studyProblems = items
       self.solveButton.selected = !items.isEmpty
       if items.isEmpty {
-        self.studyPanel(
-          nil,
-          error
-            ?? "No supported problem found on this page. Type an equation, or add a code block in Text options."
-        )
+        self.studyPanel(nil, error ?? "No supported problem found on this page. Type an equation, or add a code block in Text options.")
+      } else if items.count == 1 {
+        self.studyPanel(items[0], "")
       } else {
         self.solveButton.toolTip = "Click a highlighted exercise. Click Solve again to leave."
       }
+    }
+    if let cached = lastScan, cached.id == value.id, cached.revision == value.revision, cached.page == index {
+      complete(cached.problems, nil)
+    } else {
+      studySolver.candidates(value, page: index, done: complete)
     }
   }
   private func studyPanel(_ problem: StudyProblem?, _ message: String) {
@@ -1188,7 +1210,8 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     panel.appearance = ChromeTheme.appearance
     panel.contentViewController = controller
     panel.contentSize = controller.preferredContentSize
-    if let problem {
+    panel.delegate = self
+    if let problem, problem.frame.intersects(canvas.visibleRect) {
       panel.show(
         relativeTo: problem.frame.intersection(canvas.visibleRect), of: canvas, preferredEdge: .maxX
       )
@@ -1205,6 +1228,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     canvas.finishText()
     canvas.finishGesture()
     let notebook = canvas.notebook
+    let startPage = page
     let filename =
       notebookURL!.deletingPathExtension().lastPathComponent
       + (notebook.sourcePDF == nil ? "" : " - Annotated")
@@ -1225,7 +1249,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
         switch data {
         case .success(let bytes):
           if showingPreview {
-            self.presentPreview(bytes, filename: filename)
+            self.presentPreview(bytes, filename: filename, page: startPage)
           } else {
             self.savePDF(bytes, filename: filename)
           }
@@ -1235,10 +1259,10 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     }
   }
 
-  private func presentPreview(_ data: Data, filename: String) {
+  private func presentPreview(_ data: Data, filename: String, page: Int) {
     guard let window,
       let preview = PDFPreviewController(
-        data: data, parentSize: window.frame.size,
+        data: data, parentSize: window.frame.size, page: page,
         name: notebookURL?.deletingPathExtension().lastPathComponent ?? "Notebook")
     else { return }
     self.preview = preview
