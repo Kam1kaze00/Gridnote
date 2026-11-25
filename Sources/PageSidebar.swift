@@ -67,6 +67,9 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
   }
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
+    refreshPalette()
+  }
+  func refreshPalette() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
       layer?.backgroundColor = chromeToolbar.cgColor
     }

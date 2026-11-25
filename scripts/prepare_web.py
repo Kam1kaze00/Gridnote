@@ -13,11 +13,11 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 source_files = """
-    app.mjs blocks.mjs camera.mjs devices.mjs elements.js engine.mjs eraser.mjs
-    guide.html index.html launcher.html launcher.css launcher.js themes.css majors.js manifest.webmanifest pages.mjs render.mjs
+    image-size.mjs app.mjs blocks.mjs camera.mjs devices.mjs elements.js engine.mjs eraser.mjs
+    guide.html index.html launcher.html launcher.css launcher.js appearance.js themes.css majors.js manifest.webmanifest pages.mjs render.mjs
     solver.js store.mjs study-geometry.mjs study.mjs style.css subjects.html subjects.js
-    assets/launcher.jpg assets/default-launcher.jpg assets/pencil.png assets/pen-mark.svg assets/ink-tools.svg assets/tools.svg assets/icon-192.png assets/icon-512.png assets/maskable-512.png
 """.split()
+source_files += [p.relative_to(root / "web").as_posix() for p in sorted((root / "web/assets").glob("*")) if p.is_file() and not p.name.startswith(".")]
 packages = {
     'pdfjs-dist': ('5.6.205', 'tlUj+2IDa7G1SbvBNN74UHRLJybZDWYom+k6p5KIZl7huBvsA4APi6mKL+zCxd3tLjN5hOOEE9Tv7VdzO88pfg=='),
     'tesseract.js': ('7.0.0','exPBkd+z+wM1BuMkx/Bjv43OeLBxhL5kKWsz/9JY+DXcXdiBjiAch0V49QR3oAJqCaL5qURE0vx9Eo+G5YE7mA=='),

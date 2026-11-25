@@ -1,4 +1,4 @@
-![Gridnote, hand-lettered beside a black-and-white cartoon pencil and a graph-paper notebook](web/assets/launcher.jpg)
+![Gridnote Drafting Room, an illustrated pencil and construction lines on a drafting board](web/assets/default-cover.svg)
 
 # Gridnote
 
@@ -6,7 +6,7 @@ Paste an exercise, solve it by hand, and share the finished A4 pages. Gridnote s
 
 [Open the notebook](https://kam1kaze00.github.io/Gridnote/) · [Download Gridnote](https://github.com/Kam1kaze00/Gridnote/releases/latest) · [Ask a question](https://github.com/Kam1kaze00/Gridnote/discussions/categories/q-a) · [Suggest an idea](https://github.com/Kam1kaze00/Gridnote/discussions/categories/ideas)
 
-![Gridnote on Mac with a circuit exercise, handwritten solution and table of values](docs/images/mac-notebook.png)
+![Gridnote on Mac with a circuit exercise, handwritten solution and table of values](docs/images/macos-writing.png)
 
 ## Get started
 
@@ -26,7 +26,7 @@ Desktop downloads are community builds. The Mac app has an ad hoc signature and 
 
 Gridnote opens to a launcher. Pick a **Major** and preview its six tools, or leave **None** for a regular notebook. **Continue notebook** restores your last notebook, scroll position and zoom. **New notebook** starts a blank page. **Open file** opens a notebook or a PDF. You can switch majors later through **File → Notebook Launcher** on Mac or **Notebook menu → Notebook launcher** on the web.
 
-![Gridnote’s launcher showing the theme choice and a Computer Science toolkit and the option to continue a notebook](docs/images/launcher.png)
+![Gridnote’s launcher showing the theme choice and an Electrical Engineering toolkit and the option to continue a notebook](docs/images/default-launcher.png)
 
 Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 
@@ -34,18 +34,28 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 
 - Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. Brush includes Pen, Brush and Fineliner, smoothing and optional pressure response.
 - On a two-button pen, tap the upper switch, erase, then lift to return to Brush. Hold the lower switch and move vertically to scroll.
-- Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Use the selector to move, align or resize objects.
+- Paste a screenshot or use **Add image**. Touch devices can capture and crop a rear-camera photo. Pasted images keep their source size. Use **Selection → Fit Image to Page** when you want a smaller copy on paper. Drag a corner to see the size in millimetres and guides for matching an adjacent object’s width or height.
 - Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Remove Typed Text** can clean one page or all pages and preserves filled tables and other objects.
 - Choose **Solve**, then tap a highlighted problem. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
 - **Preview PDF → Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
 
-![Tablet writing area with contextual highlighter options](docs/images/tablet-notebook.png)
+![Tablet writing area with contextual highlighter options](docs/images/tablet-writing.png)
 
 ## Appearance
 
-Choose **Theme** on the launcher or in **Options** while writing. First launch uses **Default**. Switching to **70s Cartoon** changes the artwork and controls immediately. Default uses a compact pen nib. The cartoon theme pairs illustrated tools with a cream launcher and the transparent pencil mascot. Its optional stationery includes a double margin and a numbered corner. Choose it under **Paper** for a page or notebook. Those markings appear in the exported PDF.
+Choose a theme in the launcher or open **Options → Theme** while writing. The launcher, pencil mark, type, tool icons, panels, and new-notebook paper change together. In an existing notebook, **Paper → Stationery** sets the look for one page or the notebook default. Your saved stationery prints in the PDF.
 
-![70s Cartoon notebook showing illustrated tools, a numbered page and a worked circuit exercise](docs/images/cartoon-notebook.png)
+[Explore the five themes in the interactive gallery](https://kam1kaze00.github.io/Gridnote/gallery/). Switch between **Notebook** and **Launcher** to see the same theme in both places.
+
+| Theme | What it looks like |
+| --- | --- |
+| [Default](https://kam1kaze00.github.io/Gridnote/gallery/#default) | Drafting Room. A graphite drafting board and a pale green pen nib. |
+| [70s Cartoon](https://kam1kaze00.github.io/Gridnote/gallery/#cartoon) | A grinning pencil, inked tools and a double margin on ivory paper. |
+| [Tokyo Neon](https://kam1kaze00.github.io/Gridnote/gallery/#tokyo) | Transit lettering, turquoise route lines and numbered station circles. |
+| [Cyberpunk](https://kam1kaze00.github.io/Gridnote/gallery/#cyber) | Amber keys, graphite panels and monospaced instrument lettering. |
+| [Pixelated](https://kam1kaze00.github.io/Gridnote/gallery/#pixel) | A pocket-console pencil, square-built tools and four shades of green. |
+
+![Pixelated notebook with a four-tone toolbar, pixel lettering and a worked engineering exercise](docs/images/pixel-editor.png)
 
 ## Major tools
 

@@ -95,7 +95,44 @@ const paperMascot = new Image();
 paperMascot.addEventListener("load", () => window.dispatchEvent(new Event("gridnote-paper-loaded")));
 paperMascot.src = new URL("./assets/pencil.png", import.meta.url).href;
 
-function drawFolio(ctx, page) {
+const stocks = {
+  "Tokyo Neon": {
+    base: "#f1f7f8",
+    grid: "#b4c7d0",
+    margin: "#e67169",
+    number: "#284b69",
+    font: "Transit",
+  },
+  Cyberpunk: {
+    base: "#eff0e8",
+    grid: "#b2bcae",
+    margin: "#b2934e",
+    number: "#546052",
+    font: "Terminal",
+  },
+  Pixelated: {
+    base: "#f3f4df",
+    grid: "#b5c19a",
+    margin: "#849967",
+    number: "#506747",
+    font: "Pixel",
+  },
+};
+function drawFolio(ctx, page, design) {
+  const stock = stocks[design.stationery];
+  if (stock) {
+    ctx.fillStyle = ctx.strokeStyle = stock.number;
+    ctx.font = "bold 10px " + stock.font;
+    ctx.fillText(String(page + 1).padStart(2, "0"), 12, 24);
+    if (design.stationery === "Tokyo Neon") {
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(18, 19, 11, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else
+      ctx.fillRect(12, 28, 17, design.stationery === "Pixelated" ? 1.5 : 0.65);
+    return;
+  }
   ctx.fillStyle = "#6c6757";
   ctx.font = "italic bold 12px Georgia, serif";
   ctx.fillText(String(page + 1).padStart(2, "0"), 12, 24);
@@ -106,6 +143,11 @@ function drawFolio(ctx, page) {
   }
 }
 function paperColor(design) {
+  if (
+    stocks[design.stationery] &&
+    GridnoteAppearance.catalog[design.stationery].tint === design.tint
+  )
+    return stocks[design.stationery].base;
   return design.cartoon && design.tint === "Ivory" ? "#f8f4e8" : tints[design.tint] || "#ffffff";
 }
 export function paintPaper(ctx, page, design) {
@@ -118,7 +160,7 @@ export function paintPaper(ctx, page, design) {
   ctx.rect(0, y, W, H);
   ctx.clip();
   if (design.ruling === "Dotted") {
-    ctx.fillStyle = "rgba(112,138,153,.52)";
+    ctx.fillStyle = stocks[design.stationery]?.grid || "rgba(112,138,153,.52)";
     ctx.beginPath();
     for (let x = 0; x <= W; x += G)
       for (let j = 0; j <= H; j += G) {
@@ -128,7 +170,9 @@ export function paintPaper(ctx, page, design) {
     ctx.fill();
   } else {
     ctx.lineWidth = 0.35;
-    ctx.strokeStyle = design.cartoon ? "rgba(115,107,85,.25)" : "rgba(120,158,181,.37)";
+    ctx.strokeStyle =
+      stocks[design.stationery]?.grid ||
+      (design.cartoon ? "rgba(115,107,85,.25)" : "rgba(120,158,181,.37)");
     ctx.beginPath();
     if (design.ruling === "Grid")
       for (let x = 0; x <= W; x += G) {
@@ -141,7 +185,9 @@ export function paintPaper(ctx, page, design) {
       ctx.lineTo(W, y + j);
     }
     ctx.stroke();
-    ctx.strokeStyle = design.cartoon ? "#ae7770" : "rgba(196,94,107,.72)";
+    ctx.strokeStyle =
+      stocks[design.stationery]?.margin ||
+      (design.cartoon ? "#ae7770" : "rgba(196,94,107,.72)");
     ctx.lineWidth = 0.65;
     ctx.beginPath();
     ctx.moveTo(4 * G, y);
@@ -149,9 +195,9 @@ export function paintPaper(ctx, page, design) {
     if (design.cartoon) { ctx.moveTo(4 * G - 2.2, y); ctx.lineTo(4 * G - 2.2, y + H); }
     ctx.stroke();
   }
-  if (design.cartoon) {
+  if (design.cartoon || stocks[design.stationery]) {
     ctx.translate(0, y);
-    drawFolio(ctx, page);
+    drawFolio(ctx, page, design);
   }
   ctx.restore();
 }
@@ -310,22 +356,43 @@ export async function makePDF(book, source, progress) {
           thickness,
           opacity,
         });
-      const grid = design.cartoon ? lib.rgb(115/255,107/255,85/255) : lib.rgb(0.47, 0.62, 0.71);
-      const gridOpacity = design.cartoon ? 0.25 : 0.37;
+      const custom = stocks[design.stationery];
+      const channels = (hex) =>
+        [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const grid = custom
+        ? lib.rgb(...channels(custom.grid))
+        : design.cartoon
+          ? lib.rgb(115 / 255, 107 / 255, 85 / 255)
+          : lib.rgb(0.47, 0.62, 0.71);
+      const gridOpacity = custom ? 1 : design.cartoon ? 0.25 : 0.37;
       if (design.ruling === "Grid")
         for (let x = 0; x <= W; x += G) line(x, 0, x, H, grid, 0.35, gridOpacity);
       if (design.ruling === "Grid" || design.ruling === "Ruled") {
         const spacing = design.ruling === "Grid" ? G : (7 * 72) / 25.4;
         for (let y = 0; y <= H; y += spacing)
           line(0, H - y, W, H - y, grid, 0.35, gridOpacity);
-        const margin = design.cartoon ? lib.rgb(174/255,119/255,112/255) : lib.rgb(0.77,0.37,0.42);
-        line(4 * G, 0, 4 * G, H, margin, 0.65, design.cartoon ? 1 : 0.72);
+        const margin = custom
+          ? lib.rgb(...channels(custom.margin))
+          : design.cartoon
+            ? lib.rgb(174 / 255, 119 / 255, 112 / 255)
+            : lib.rgb(0.77, 0.37, 0.42);
+        line(
+          4 * G,
+          0,
+          4 * G,
+          H,
+          margin,
+          0.65,
+          custom || design.cartoon ? 1 : 0.72,
+        );
         if (design.cartoon) line(4 * G - 2.2, 0, 4 * G - 2.2, H, margin, 0.65, 1);
       } else if (design.ruling === "Dotted") {
         // Tile one vector dot using a single graphics-state setup.
         page.pushOperators(
           lib.pushGraphicsState(),
-          lib.setFillingRgbColor(0.67, 0.72, 0.75),
+          lib.setFillingRgbColor(
+            ...(custom ? channels(custom.grid) : [0.67, 0.72, 0.75]),
+          ),
         );
         const k = 0.33137,
           r = 0.6;
@@ -342,9 +409,10 @@ export async function makePDF(book, source, progress) {
           }
         page.pushOperators(lib.fill(), lib.popGraphicsState());
       }
-      if (design.cartoon && design.ruling !== "Whiteboard") {
-        await paperMascot.decode();
-        const folio = await raster(ctx => drawFolio(ctx, i), W, 38);
+      if ((design.cartoon || custom) && design.ruling !== "Whiteboard") {
+        if (custom) await document.fonts.load("bold 10px " + custom.font);
+        else await paperMascot.decode();
+        const folio = await raster((ctx) => drawFolio(ctx, i, design), W, 38);
         page.drawImage(folio, { x: 0, y: H - 38, width: W, height: 38 });
       }
     }

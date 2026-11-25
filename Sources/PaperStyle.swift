@@ -31,6 +31,30 @@ struct PaperDesign: Codable, Equatable {
   var ruling: PaperRuling = .grid
   var tint: PaperTint = .white
   var cartoon: Bool?
+  var stationery: String?
+  var theme: NotebookTheme {
+    stationery.flatMap(NotebookTheme.init(rawValue:)) ?? (cartoon == true ? .cartoon : .standard)
+  }
+  static func themed(_ theme: NotebookTheme) -> Self {
+    let tint: PaperTint
+    switch theme {
+    case .tokyo: tint = .blue;
+    case .pixel: tint = .sage;
+    case .standard: tint = .white;
+    default: tint = .ivory
+    }
+    return Self(
+      ruling: .grid, tint: tint, cartoon: theme == .cartoon ? true : nil, stationery: theme.rawValue
+    )
+  }
+  var paperInks: (base: Int, grid: Int, margin: Int, number: Int)? {
+    switch theme {
+    case .tokyo: return (0xf1f7f8, 0xb4c7d0, 0xe67169, 0x284b69)
+    case .cyber: return (0xeff0e8, 0xb2bcae, 0xb2934e, 0x546052)
+    case .pixel: return (0xf3f4df, 0xb5c19a, 0x849967, 0x506747)
+    default: return nil
+    }
+  }
 }
 
 final class PaperPicker: NSViewController {
@@ -39,7 +63,7 @@ final class PaperPicker: NSViewController {
   private var global: Bool
   private var ruling: NSSegmentedControl!
   private var colors: [ChromeButton] = []
-  private var cartoonCheck: NSButton!
+  private let stationery = NSPopUpButton()
   private var colorLabel: NSTextField!
   init(canvas: NoteCanvas, page: Int) {
     self.canvas = canvas
@@ -77,11 +101,15 @@ final class PaperPicker: NSViewController {
       button.setAccessibilityLabel(tint.rawValue)
       return button
     }
-    cartoonCheck = NSButton(checkboxWithTitle: "70s Cartoon paper", target: self, action: #selector(changeCartoon(_:)))
+    stationery.addItems(withTitles: NotebookTheme.allCases.map(\.rawValue))
+    stationery.target = self
+    stationery.action = #selector(changeStationery(_:))
+    stationery.setAccessibilityLabel("Stationery")
     let column = chromeStack(
       [
         chromeLabel("Paper", size: 15, weight: .semibold), scope,
-        ruling, cartoonCheck, colorLabel, chromeStack(colors, spacing: 5),
+        ruling, chromeStack([chromeLabel("Stationery"), stationery]), colorLabel,
+        chromeStack(colors, spacing: 5),
       ], spacing: 9, horizontal: false)
     view.addSubview(column)
     NSLayoutConstraint.activate([
@@ -95,7 +123,7 @@ final class PaperPicker: NSViewController {
   }
   private func refresh() {
     let design = current
-    cartoonCheck.state = design.cartoon == true ? .on : .off
+    stationery.selectItem(withTitle: design.theme.rawValue)
     colorLabel.stringValue = "Paper color · " + design.tint.rawValue
     ruling.selectedSegment = PaperRuling.allCases.firstIndex(of: design.ruling)!
     for (index, button) in colors.enumerated() {
@@ -112,9 +140,14 @@ final class PaperPicker: NSViewController {
     canvas.setPaper(design, on: global ? nil : page)
     refresh()
   }
-  @objc private func changeCartoon(_ sender: NSButton) {
+  @objc private func changeStationery(_ sender: NSPopUpButton) {
     var design = current
-    design.cartoon = sender.state == .on ? true : nil
+    guard let title = sender.titleOfSelectedItem, let theme = NotebookTheme(rawValue: title) else {
+      return
+    }
+    design.stationery = title
+    design.cartoon = theme == .cartoon ? true : nil
+    design.tint = PaperDesign.themed(theme).tint
     canvas.setPaper(design, on: global ? nil : page)
     refresh()
   }

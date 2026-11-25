@@ -27,20 +27,30 @@ final class PaperRenderer {
     strokes.totalCostLimit = 32 * 1024 * 1024
   }
 
-  private func drawFolio(_ page: Int, top: CGFloat, context: CGContext) {
+  private func color(_ value: Int) -> CGColor {
+    CGColor(
+      srgbRed: CGFloat(value >> 16 & 255) / 255, green: CGFloat(value >> 8 & 255) / 255,
+      blue: CGFloat(value & 255) / 255, alpha: 1)
+  }
+  private func drawFolio(_ page: Int, design: PaperDesign, top: CGFloat, context: CGContext) {
     context.saveGState()
     context.translateBy(x: 0, y: top + 24)
     context.scaleBy(x: 1, y: -1)
     context.textMatrix = .identity
-    let ink = CGColor(red: 108/255, green: 103/255, blue: 87/255, alpha: 1)
+    let ink = color(design.paperInks?.number ?? 0x6c6757)
     let number = NSAttributedString(string: String(format: "%02d", page + 1), attributes: [
-      .font: NSFont(name: "Georgia-BoldItalic", size: 12) ?? NSFont.boldSystemFont(ofSize: 12),
+        .font: design.theme.font(design.theme == .cartoon ? 12 : 10, .semibold),
       .foregroundColor: NSColor(cgColor: ink) ?? .darkGray])
     context.textPosition = CGPoint(x: 12, y: 0)
     CTLineDraw(CTLineCreateWithAttributedString(number), context)
     context.setFillColor(ink)
-    context.fill(CGRect(x: 12, y: -4.65, width: 17, height: 0.65))
-    if let image = NotebookGlyph.mascotCG {
+    if design.theme == .tokyo {
+      context.setStrokeColor(ink); context.setLineWidth(0.8)
+      context.strokeEllipse(in: CGRect(x: 7, y: -6, width: 22, height: 22))
+    } else {
+      context.fill(CGRect(x: 12, y: -4.65, width: 17, height: design.theme == .pixel ? 1.5 : 0.65))
+    }
+    if design.theme == .cartoon, let image = NotebookGlyph.mascotCG {
       context.setAlpha(0.72)
       context.draw(image, in: CGRect(x: paperSize.width - 43, y: -12, width: 34, height: 32))
     }
@@ -75,11 +85,19 @@ final class PaperRenderer {
       context.clip(to: page.getBoxRect(.cropBox))
       context.drawPDFPage(page)
     } else {
-      let cartoon = design.cartoon == true
+      let cartoon = design.theme == .cartoon
+      let custom = design.paperInks
       let tint = cartoon && design.tint == .ivory ? CGColor(red: 248/255, green: 244/255, blue: 232/255, alpha: 1) : design.tint.color.cgColor
-      context.setFillColor(tint)
+      context.setFillColor(
+        custom.flatMap {
+          design.tint == PaperDesign.themed(design.theme).tint ? color($0.base) : nil
+        } ?? tint)
       context.fill(rect)
-      context.setStrokeColor(cartoon ? CGColor(red: 115/255, green: 107/255, blue: 85/255, alpha: 0.25) : CGColor(red: 0.47, green: 0.62, blue: 0.71, alpha: 0.37))
+      context.setStrokeColor(
+        custom.map { color($0.grid) }
+          ?? (cartoon
+            ? CGColor(red: 115 / 255, green: 107 / 255, blue: 85 / 255, alpha: 0.25)
+            : CGColor(red: 0.47, green: 0.62, blue: 0.71, alpha: 0.37)))
       context.setLineWidth(0.35)
       if design.ruling == .grid {
         for x in stride(from: CGFloat.zero, through: rect.width, by: paperGrid) {
@@ -94,7 +112,9 @@ final class PaperRenderer {
           context.addLine(to: CGPoint(x: rect.width, y: y))
         }
         context.strokePath()
-        context.setStrokeColor(CGColor(red: 0.77, green: 0.37, blue: 0.42, alpha: 0.72))
+        context.setStrokeColor(
+          custom.map { color($0.margin) }
+            ?? CGColor(red: 0.77, green: 0.37, blue: 0.42, alpha: 0.72))
         context.setLineWidth(0.65)
         context.move(to: CGPoint(x: paperGrid * 4, y: rect.minY))
         context.addLine(to: CGPoint(x: paperGrid * 4, y: rect.maxY))
@@ -105,7 +125,8 @@ final class PaperRenderer {
         }
         context.strokePath()
       } else if design.ruling == .dotted {
-        context.setFillColor(CGColor(red: 0.44, green: 0.54, blue: 0.6, alpha: 0.52))
+        context.setFillColor(
+          custom.map { color($0.grid) } ?? CGColor(red: 0.44, green: 0.54, blue: 0.6, alpha: 0.52))
         let visible = context.boundingBoxOfClipPath.intersection(rect)
         let x0 = max(0, floor(visible.minX / paperGrid)) * paperGrid
         let y0 = rect.minY + max(0, floor((visible.minY - rect.minY) / paperGrid)) * paperGrid
@@ -115,8 +136,8 @@ final class PaperRenderer {
           }
         }
       }
-      if cartoon && design.ruling != .plain {
-        drawFolio(index, top: rect.minY, context: context)
+      if design.theme != .standard && design.ruling != .plain {
+        drawFolio(index, design: design, top: rect.minY, context: context)
       }
     }
     context.restoreGState()
@@ -321,12 +342,32 @@ final class PaperRenderer {
 
   static func importImage(_ data: Data) throws -> (data: Data, size: CGSize) {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+      let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = metadata[kCGImagePropertyPixelWidth] as? CGFloat,
+      let height = metadata[kCGImagePropertyPixelHeight] as? CGFloat, width > 0, height > 0
+    else { throw CocoaError(.fileReadCorruptFile) }
+    func dpi(_ key: CFString) -> CGFloat {
+      guard let density = metadata[key] as? CGFloat, density.isFinite, density > 0 else {
+        return 96
+      }
+      return density
+    }
+    let orientation = metadata[kCGImagePropertyOrientation] as? Int ?? 1
+    let natural = CGSize(
+      width: width * 72 / dpi(kCGImagePropertyDPIWidth),
+      height: height * 72 / dpi(kCGImagePropertyDPIHeight))
+    let size =
+      (5...8).contains(orientation) ? CGSize(width: natural.height, height: natural.width) : natural
+    if CGImageSourceGetType(source) as String? == UTType.png.identifier && orientation == 1 {
+      return (data, size)
+    }
+    guard
       let image = CGImageSourceCreateThumbnailAtIndex(
         source, 0,
         [
           kCGImageSourceCreateThumbnailFromImageAlways: true,
           kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceThumbnailMaxPixelSize: 4800,
+          kCGImageSourceThumbnailMaxPixelSize: Int(max(width, height)),
         ] as CFDictionary)
     else { throw CocoaError(.fileReadCorruptFile) }
     let output = NSMutableData()
@@ -338,6 +379,6 @@ final class PaperRenderer {
     }
     CGImageDestinationAddImage(encoder, image, nil)
     guard CGImageDestinationFinalize(encoder) else { throw CocoaError(.fileWriteUnknown) }
-    return (output as Data, CGSize(width: image.width, height: image.height))
+    return (output as Data, size)
   }
 }

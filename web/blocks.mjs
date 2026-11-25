@@ -83,7 +83,7 @@ export function shapeObject(start, end, shape, lock, width, color) {
     instrument: "shape",
   };
 }
-export function align(box, targets, tolerance) {
+export function align(box, targets, tolerance, fixed = null) {
   const adjust = [0, 0],
     guides = [];
   for (let axis = 0; axis < 2; axis++) {
@@ -91,7 +91,9 @@ export function align(box, targets, tolerance) {
     let best = tolerance + 0.00001,
       chosen;
     for (const t of targets)
-      for (const m of marks(box))
+      for (const m of marks(box).filter(
+        (mark) => !fixed || Math.abs(mark - fixed[axis]) > 0.01,
+      ))
         for (const v of marks(t)) {
           if (Math.abs(v - m) >= best) continue;
           best = Math.abs(v - m);
@@ -113,6 +115,41 @@ export function align(box, targets, tolerance) {
     if (chosen) guides.push(chosen);
   }
   return { adjust, guides };
+}
+export function resizeGuides(box, targets, tolerance, fixed) {
+  const { guides } = align(box, targets, tolerance, fixed),
+    matches = [];
+  for (const axis of [0, 1]) {
+    const closest = targets.reduce(
+      (best, t) =>
+        Math.abs(t[1][axis] - box[1][axis]) <= tolerance &&
+        (!best ||
+          Math.abs(t[1][axis] - box[1][axis]) <
+            Math.abs(best[1][axis] - box[1][axis]))
+          ? t
+          : best,
+      null,
+    );
+    if (!closest) continue;
+    matches.push(axis === 0 ? "W" : "H");
+    for (const [origin, size] of [box, closest]) {
+      const a = [...origin],
+        b = [...origin],
+        cross = 1 - axis;
+      a[cross] += size[cross] / 2;
+      b[cross] = a[cross];
+      b[axis] += size[axis];
+      guides.push([a, b]);
+      for (const end of [a, b]) {
+        const l = [...end],
+          r = [...end];
+        l[cross] -= tolerance;
+        r[cross] += tolerance;
+        guides.push([l, r]);
+      }
+    }
+  }
+  return { guides, matches };
 }
 const lex =
   /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|^\s*#(?!include|define|import)[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b(?:if|else|for|while|return|break|continue|def|class|import|from|in|as|let|var|const|func|function|int|float|double|char|void|struct|bool|true|false|True|False|None|null|using|public|private|static|new|switch|case|end|include|define|printf|print|fn|mut|impl|trait|enum|match|package|interface|extends|async|await|yield|with|lambda|try|except|catch|throw|throws|finally|namespace|using|override|protected|final|val|fun|type|interface|SELECT|FROM|WHERE|JOIN|GROUP|ORDER|BY|INSERT|UPDATE|AND|OR|NULL|nil)\b)|(\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b)/gm;

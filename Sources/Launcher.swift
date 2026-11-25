@@ -20,7 +20,7 @@ final class LauncherController: NSWindowController, WKScriptMessageHandler {
   private var web: WKWebView!
   init(preferences: PenPreferences, last: URL?, start: @escaping (String, URL?) -> Void) {
     prefs = preferences
-    ChromeTheme.cartoon = preferences.cartoonTheme
+    ChromeTheme.current = preferences.theme
     self.start = start
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -30,7 +30,8 @@ final class LauncherController: NSWindowController, WKScriptMessageHandler {
     window.center()
     super.init(window: window)
     let config = WKWebViewConfiguration()
-    let options: [String: Any] = ["theme": prefs.cartoonTheme ? "70s Cartoon" : "Default", "major": prefs.major, "device": prefs.deviceDescription,
+    let options: [String: Any] = [
+      "theme": prefs.theme.rawValue, "major": prefs.major, "device": prefs.deviceDescription,
       "lastName": last?.deletingPathExtension().lastPathComponent ?? "", "hasLast": last != nil]
     if let data = try? JSONSerialization.data(withJSONObject: options),
        let json = String(data: data, encoding: .utf8) {
@@ -87,9 +88,9 @@ final class LauncherController: NSWindowController, WKScriptMessageHandler {
       let values = message.body as? [String: String], let action = values["action"] else { return }
     switch action {
     case "theme":
-      guard let theme = values["theme"], ["Default", "70s Cartoon"].contains(theme) else { return }
-      prefs.cartoonTheme = theme == "70s Cartoon"
-      ChromeTheme.cartoon = prefs.cartoonTheme
+      guard let name = values["theme"], let theme = NotebookTheme(rawValue: name) else { return }
+      prefs.theme = theme
+      ChromeTheme.current = theme
       window?.appearance = ChromeTheme.appearance
     case "major": if let major = values["major"] { prefs.major = major }
     case "open": openDocument(nil)

@@ -31,8 +31,34 @@ async function main() {
         await page
           .locator(".start-cover")
           .evaluate((el) => getComputedStyle(el).backgroundImage)
-      ).includes("/default-launcher.jpg"),
+      ).includes("/default-cover.svg"),
     );
+    const expected = [
+      ["Tokyo Neon", "tokyo", "Transit"],
+      ["Cyberpunk", "cyber", "Terminal"],
+      ["Pixelated", "pixel", "Pixel"],
+    ];
+    for (const [name, id, font] of expected) {
+      await launcherTheme.selectOption(name);
+      await page.locator(".start-cover img").evaluate((img) => img.decode());
+      assert.match(
+        await page.locator(".start-cover img").getAttribute("src"),
+        new RegExp(id + "-pencil"),
+      );
+      assert(
+        await page.evaluate(async (font) => {
+          await document.fonts.load("14px " + font);
+          return (
+            document.fonts.check("14px " + font) &&
+            getComputedStyle(
+              document.querySelector("#welcome-major"),
+            ).fontFamily.includes(font)
+          );
+        }, font),
+        name,
+      );
+    }
+    await launcherTheme.selectOption("Default");
     await page.click("#new");
     await page.waitForSelector("#sheet");
     assert.match(
@@ -40,9 +66,23 @@ async function main() {
       /pen-mark\.svg$/,
     );
     await page.click("#settings");
-    await page
-      .getByRole("button", { name: "70s Cartoon", exact: true })
-      .click();
+    const editorTheme = page.locator("#popover select[aria-label=Theme]");
+    for (const [name, id] of expected) {
+      await editorTheme.selectOption(name);
+      await page.waitForFunction(
+        (id) =>
+          document
+            .querySelector("#tool-brush use")
+            .getAttribute("href")
+            .includes(id + "-tools.svg"),
+        id,
+      );
+      assert.match(
+        await page.locator("#files img").getAttribute("src"),
+        new RegExp(id + "-pencil"),
+      );
+    }
+    await editorTheme.selectOption("70s Cartoon");
     assert.match(
       await page.locator("#files img").getAttribute("src"),
       /pencil\.png$/,
@@ -56,14 +96,14 @@ async function main() {
     );
     await page.keyboard.press("Escape");
     await page.click("#paper");
-    const stationery = page.getByLabel("70s Cartoon paper");
-    assert.equal(await stationery.isChecked(), false);
-    await stationery.check();
+    const stationery = page.getByLabel("Stationery");
+    assert.equal(await stationery.inputValue(), "Default");
+    await stationery.selectOption("70s Cartoon");
     await page
       .locator("#popover")
       .getByRole("button", { name: "Ivory", exact: true })
       .click();
-    assert(await page.getByLabel("70s Cartoon paper").isChecked());
+    assert.equal(await stationery.inputValue(), "70s Cartoon");
     await page.keyboard.press("Escape");
     await page.waitForFunction(
       () => document.querySelector("#saved").textContent === "Saved",

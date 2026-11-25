@@ -28,7 +28,7 @@
 }
 .start-cover {
   height: clamp(80px, 16vh, 120px);
-  background: #eeece9 url("./assets/default-launcher.jpg") center/cover;
+  background: #eeece9 url("./assets/default-cover.svg") center/cover;
 }
 .start-content {
   padding: clamp(18px, 4vw, 30px);

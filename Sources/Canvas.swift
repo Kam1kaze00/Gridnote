@@ -59,9 +59,16 @@ final class PenPreferences {
     case .table: return tableHeader ? "table-header" : "table"
     }
   }
+  var theme: NotebookTheme {
+    get {
+      defaults.string(forKey: "NotebookAppearance").flatMap(NotebookTheme.init(rawValue:))
+        ?? (defaults.bool(forKey: "CartoonAppearance") ? .cartoon : .standard)
+    }
+    set { defaults.set(newValue.rawValue, forKey: "NotebookAppearance") }
+  }
   var cartoonTheme: Bool {
-    get { defaults.bool(forKey: "CartoonAppearance") }
-    set { defaults.set(newValue, forKey: "CartoonAppearance") }
+    get { theme == .cartoon }
+    set { theme = newValue ? .cartoon : .standard }
   }
   var major: String {
     get {
@@ -113,6 +120,7 @@ final class PenPreferences {
       defaults.removeObject(forKey: "PaletteVisible")
       defaults.removeObject(forKey: "StudyMajor")
       defaults.removeObject(forKey: "CartoonAppearance")
+      defaults.removeObject(forKey: "NotebookAppearance")
     }
   }
   var pressure: Double {
@@ -311,6 +319,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private var blockPreview: NoteObject?
   private var guideTargets: [CGRect] = []
   private var activeGuides: [AlignGuide] = []
+  private var measurement: (label: NSAttributedString, frame: CGRect)?
   private var codeButton: NSButton?
   var studyProblems: [StudyProblem] = [] { didSet { needsDisplay = true } }
   var onStudyPick: ((StudyProblem) -> Void)?
@@ -509,6 +518,12 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       context.addLine(to: guide.b)
     }
     context.strokePath()
+    if let measurement {
+      NSColor(srgbRed: 0.15, green: 0.21, blue: 0.21, alpha: 1).setFill()
+      measurement.frame.fill()
+      measurement.label.draw(
+        at: CGPoint(x: measurement.frame.minX + 6 / scale, y: measurement.frame.minY + 3 / scale))
+    }
   }
 
   private func drawSelection(_ context: CGContext) {
@@ -744,6 +759,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     originalObjects = nil
     transformBounds = nil
     updateGuides([])
+    if let measurement { invalidate(measurement.frame); self.measurement = nil }
     guideTargets = []
     transformMode = nil
     gestureOrigin = nil
@@ -854,13 +870,15 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     case .move:
       anchor = .zero
       multiplier = 1
-      let dx = min(paperSize.width - bounds.maxX, max(-bounds.minX, point.x - start.x))
+      let lowerX = min(0, paperSize.width - bounds.width) - bounds.minX
+      let upperX = max(0, paperSize.width - bounds.width) - bounds.minX
+      let dx = min(upperX, max(lowerX, point.x - start.x))
       let dy = max(-bounds.minY, min(self.bounds.maxY - bounds.maxY, point.y - start.y))
       var move = CGPoint(x: dx, y: dy)
       if preferences.guides && (abs(dx) + abs(dy)) * scale > 2 {
         let (snap, guides) = alignment(
           for: bounds.offsetBy(dx: dx, dy: dy), near: guideTargets, tolerance: 4 / scale)
-        move.x = min(paperSize.width - bounds.maxX, max(-bounds.minX, dx + snap.x))
+        move.x = min(upperX, max(lowerX, dx + snap.x))
         move.y = min(self.bounds.maxY - bounds.maxY, max(-bounds.minY, dy + snap.y))
         updateGuides(guides)
       } else {
@@ -884,6 +902,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         notebook.objects = before
         notebook.objects[i].frame = f
         notebook.objects[i].layoutFrame = nil
+        measure(f, at: point, fixed: fixed)
         invalidate(oldBounds.union(f), padding: selectionPadding + 8)
         return
       }
@@ -899,12 +918,16 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       if bounds.maxY > anchor.y {
         limit = min(limit, (self.bounds.maxY - anchor.y) / (bounds.maxY - anchor.y))
       }
-      multiplier = max(0.05, min(limit, max(min(1, 5 / max(bounds.width, bounds.height)), wanted)))
+      multiplier = max(
+        0.05, min(max(1, limit), max(min(1, 5 / max(bounds.width, bounds.height)), wanted)))
       offset = .zero
     }
     notebook.objects = before.map { object in
       selection.contains(object.id)
         ? object.transformed(from: anchor, scale: multiplier, offset: offset) : object
+    }
+    if case .resize(let fixed) = mode, let frame = selectedBounds {
+      measure(frame, at: point, fixed: fixed)
     }
     updateCodeButton()
     invalidate(oldBounds.union(selectedBounds ?? oldBounds), padding: selectionPadding + 8)
@@ -1166,18 +1189,38 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     setSelection(Set(objects.map(\.id)))
   }
 
+  var selectedImageIndex: Int? {
+    guard selection.count == 1 else { return nil }
+    return notebook.objects.firstIndex {
+      if case .image = $0.content { return selection.contains($0.id) }; return false
+    }
+  }
+  @objc func fitSelectedImage(_ sender: Any?) {
+    guard let i = selectedImageIndex else { return }
+    var next = notebook.objects
+    let f = next[i].frame, inset = paperGrid * 2
+    let scale = min(
+      (paperSize.width - 2 * inset) / f.width, (paperSize.height - 2 * inset) / f.height)
+    let w = f.width * scale, h = f.height * scale,
+      top = floor(f.minY / paperSize.height) * paperSize.height
+    next[i].frame = CGRect(
+      x: (paperSize.width - w) / 2,
+      y: max(top + inset, min(f.minY, top + paperSize.height - h - inset)), width: w, height: h)
+    next[i].layoutFrame = nil
+    didChange(from: notebook.objects, to: next, name: "Fit Image to Page")
+  }
+
   private func insertCopies(_ objects: [NoteObject]) {
     let group = objects.reduce(CGRect.null) { $0.union($1.frame) }
     guard !group.isNull, group.width > 0, group.height > 0, group.minX.isFinite, group.minY.isFinite
     else { return }
     let isVisible = visibleRect.intersects(group.insetBy(dx: -12, dy: -12))
     let location = isVisible ? group.origin + CGPoint(x: 12, y: 12) : insertionOrigin
-    let multiplier = min(1, (paperSize.width - 16) / group.width)
-    let dx = min(paperSize.width - group.width * multiplier, max(0, location.x)) - group.minX
+    let dx = max(0, min(paperSize.width - group.width, max(0, location.x))) - group.minX
     let dy = max(0, location.y) - group.minY
     let copies = objects.map { object -> NoteObject in
       var copy = object.transformed(
-        from: group.origin, scale: multiplier, offset: CGPoint(x: dx, y: dy))
+        from: group.origin, scale: 1, offset: CGPoint(x: dx, y: dy))
       copy.id = UUID()
       return copy
     }
@@ -1193,10 +1236,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
   private func importImage(_ data: Data, at location: CGPoint? = nil) {
     do {
       let image = try PaperRenderer.importImage(data)
-      let available = max(200, min(paperSize.width * 0.78, visibleRect.width - 28))
-      let factor = min(
-        0.60, available / image.size.width, paperSize.height * 0.78 / image.size.height)
-      let size = CGSize(width: image.size.width * factor, height: image.size.height * factor)
+      let size = image.size
       let origin = location ?? insertionOrigin
       let point = CGPoint(
         x: max(0, min(origin.x, paperSize.width - size.width)), y: max(0, origin.y))
@@ -1444,6 +1484,24 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       object?.opacity = preferences.markerOpacity
     }
     return object
+  }
+  private func measure(_ frame: CGRect, at point: CGPoint, fixed: CGPoint) {
+    guard preferences.guides else { return }
+    let feedback = resizeFeedback(frame, targets: guideTargets, fixed: fixed, tolerance: 4 / scale)
+    updateGuides(feedback.guides)
+    var text = String(format: "%.1f × %.1f mm", frame.width * 25.4 / 72, frame.height * 25.4 / 72)
+    if !feedback.matches.isEmpty { text += " · " + feedback.matches.joined(separator: "+") }
+    let label = NSAttributedString(
+      string: text,
+      attributes: [.font: ChromeTheme.current.font(11 / scale), .foregroundColor: NSColor.white])
+    let w = label.size().width + 12 / scale, h = label.size().height + 6 / scale
+    let f = CGRect(
+      x: max(visibleRect.minX, min(visibleRect.maxX - w, point.x + 10 / scale)),
+      y: max(visibleRect.minY, min(visibleRect.maxY - h, point.y + 12 / scale)), width: w, height: h
+    )
+    if let old = measurement { invalidate(old.frame) }
+    measurement = (label, f)
+    invalidate(f)
   }
   private func updateGuides(_ next: [AlignGuide]) {
     guard activeGuides != next else { return }

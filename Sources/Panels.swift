@@ -5,7 +5,7 @@ final class PenSettingsController: NSViewController {
   private let preferences: PenPreferences
   var didRestore: (() -> Void)?
   private let majorPicker = NSPopUpButton()
-  private var themePicker: NSSegmentedControl!
+  private let themePicker = NSPopUpButton()
   private let setup: () -> Void
   private var values: [NSTextField] = []
   private var sliders: [NSSlider] = []
@@ -29,9 +29,11 @@ final class PenSettingsController: NSViewController {
     let device = chromeLabel(preferences.deviceDescription, size: 12, color: chromeMuted)
     let stack = chromeStack([heading, device], spacing: 11, horizontal: false)
     view.addSubview(stack)
-    themePicker = NSSegmentedControl(labels: ["Default", "70s Cartoon"], trackingMode: .selectOne, target: self, action: #selector(changeTheme(_:)))
+    themePicker.addItems(withTitles: NotebookTheme.allCases.map(\.rawValue))
+    themePicker.target = self
+    themePicker.action = #selector(changeTheme(_:))
     themePicker.setAccessibilityLabel("Theme")
-    themePicker.selectedSegment = preferences.cartoonTheme ? 1 : 0
+    themePicker.selectItem(withTitle: preferences.theme.rawValue)
     stack.addArrangedSubview(chromeStack([chromeLabel("Theme"), themePicker]))
     for index in labels.indices {
       let label = chromeLabel(labels[index], size: 12, weight: .medium)
@@ -80,8 +82,11 @@ final class PenSettingsController: NSViewController {
     preferences.scrollSpeed = value
     display(slider.tag)
   }
-  @objc private func changeTheme(_ sender: NSSegmentedControl) {
-    preferences.cartoonTheme = sender.selectedSegment == 1
+  @objc private func changeTheme(_ sender: NSPopUpButton) {
+    guard let title = sender.titleOfSelectedItem, let theme = NotebookTheme(rawValue: title) else {
+      return
+    }
+    preferences.theme = theme
     didRestore?()
   }
   @objc private func changeMajor() {
@@ -91,7 +96,7 @@ final class PenSettingsController: NSViewController {
   @objc private func restoreAll() {
     preferences.restore()
     majorPicker.selectItem(withTitle: "None")
-    themePicker.selectedSegment = 0
+    themePicker.selectItem(at: 0)
     sliders[0].doubleValue = preferences.scrollSpeed
     display(0)
     didRestore?()

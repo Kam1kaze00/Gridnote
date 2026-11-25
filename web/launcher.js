@@ -4,7 +4,7 @@
       <div class="start-cover" role="img"></div>
       <div class="start-content"><h1 id="start-title">Open your notebook</h1>
         <div class="start-fields"><label class="start-label" for="welcome-major">Major<select id="welcome-major" aria-label="Major"></select></label>
-          <label class="start-label" for="welcome-theme">Theme<select id="welcome-theme" aria-label="Theme"><option>Default</option><option>70s Cartoon</option></select></label></div>
+          <label class="start-label" for="welcome-theme">Theme<select id="welcome-theme" aria-label="Theme"></select></label></div>
         <div class="start-preview" aria-live="polite"></div>
         <p id="detected-device" class="start-meta" hidden></p>
         <div class="start-actions"><button id="continue" class="start-continue" hidden><span>Continue notebook</span><small></small></button>
@@ -31,19 +31,38 @@
       }
     }
     const themePicker = find("welcome-theme");
+    GridnoteAppearance.fillPicker(themePicker);
     function selectTheme(value) {
-      const cartoon = value === "70s Cartoon";
-      themePicker.value = cartoon ? "70s Cartoon" : "Default";
-      document.body.classList.toggle("seventies", cartoon);
-      document.body.classList.toggle("refined", !cartoon);
-      host
-        .querySelector(".start-cover")
-        .setAttribute(
-          "aria-label",
-          cartoon
-            ? "Gridnote with a cartoon pencil and graph-paper notebook"
-            : "Gridnote on engineering paper beside a pen",
+      const style = GridnoteAppearance.apply(value);
+      themePicker.value = Object.hasOwn(GridnoteAppearance.catalog, value)
+        ? value
+        : "Default";
+      const cover = host.querySelector(".start-cover");
+      cover.replaceChildren();
+      cover.setAttribute("aria-label", themePicker.value + " Gridnote cover");
+      if (document.body.classList.contains("designed")) {
+        const mark = new Image();
+        mark.src = "./assets/" + style.mark;
+        mark.alt = "";
+        const wordmark = document.createElement("b");
+        wordmark.textContent = "Gridnote";
+        cover.append(mark, wordmark);
+      }
+      for (const id of ["new", "open"]) {
+        const button = find(id);
+        button.querySelector("svg")?.remove();
+        if (!document.body.classList.contains("designed")) continue;
+        const svg = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "svg",
         );
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("aria-hidden", "true");
+        const use = document.createElementNS(svg.namespaceURI, "use");
+        use.setAttribute("href", "./assets/" + style.sprite + ".svg#" + id);
+        svg.append(use);
+        button.prepend(svg);
+      }
     }
     selectTheme(options.theme);
     themePicker.onchange = () => {

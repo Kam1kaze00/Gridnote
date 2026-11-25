@@ -1,9 +1,85 @@
 import AppKit
+import CoreText
+
+enum NotebookTheme: String, CaseIterable, Codable {
+  case standard = "Default", cartoon = "70s Cartoon", tokyo = "Tokyo Neon", cyber = "Cyberpunk",
+    pixel = "Pixelated"
+  var sprite: String {
+    switch self {
+    case .standard: return "tools"
+    case .cartoon: return "ink-tools"
+    case .tokyo: return "tokyo-tools"
+    case .cyber: return "cyber-tools"
+    case .pixel: return "pixel-tools"
+    }
+  }
+  var mark: (String, String) {
+    switch self {
+    case .standard: return ("pen-mark", "svg")
+    case .cartoon: return ("pencil", "png")
+    case .tokyo: return ("tokyo-pencil", "png")
+    case .cyber: return ("cyber-pencil", "png")
+    case .pixel: return ("pixel-pencil", "svg")
+    }
+  }
+  var palette: [Int]? {
+    switch self {
+    case .tokyo: return [0xff694a, 0x111e36, 0x182943, 0x536b85, 0xf3ece6, 0xb4c4d8]
+    case .cyber: return [0xf3b840, 0x151a1c, 0x262c2d, 0x65716c, 0xe3e8e4, 0xbcc6c1]
+    case .pixel: return [0xc9d78e, 0x27382f, 0x364e3e, 0x7f9475, 0xf1efd1, 0xc1cfa6]
+    default: return nil
+    }
+  }
+  var radius: CGFloat {
+    switch self {
+    case .pixel: return 0;
+    case .cyber: return 2;
+    case .tokyo: return 9;
+    default: return 6
+    }
+  }
+  func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
+    let face: String
+    switch self {
+    case .standard: return .systemFont(ofSize: size, weight: weight)
+    case .cartoon:
+      face = weight.rawValue >= NSFont.Weight.semibold.rawValue ? "Georgia-Bold" : "Georgia"
+    case .tokyo: face = "BarlowSemiCondensed-Regular"
+    case .cyber: face = "IBMPlexMono"
+    case .pixel: face = "PixelifySans-Regular"
+    }
+    _ = ChromeTheme.registerFonts
+    let font = NSFont(name: face, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+    return weight.rawValue >= NSFont.Weight.semibold.rawValue
+      ? NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) : font
+  }
+}
 
 enum ChromeTheme {
-  static var cartoon = false
+  static var current = NotebookTheme.standard
+  static var cartoon: Bool {
+    get { current == .cartoon }
+    set { current = newValue ? .cartoon : .standard }
+  }
+  static let registerFonts: Void = {
+    for name in ["pixelifysans", "ibmplexmono", "barlowsemicondensed"] {
+      CTFontManagerRegisterFontsForURL(asset(name, "ttf") as CFURL, .process, nil)
+    }
+  }()
   static var appearance: NSAppearance? { NSAppearance(named: cartoon ? .aqua : .darkAqua) }
 
+  static func styleControls(_ view: NSView) {
+    if let control = view as? NSControl, let font = control.font {
+      if !(control is NSTextField) || (control as? NSTextField)?.isEditable == false {
+        let bold = NSFontManager.shared.traits(of: font).contains(.boldFontMask)
+        control.font = current.font(font.pointSize, bold ? .semibold : .regular)
+      }
+    }
+    if let button = view as? ChromeButton { button.invalidateIntrinsicContentSize() }
+    if let surface = view as? Surface { surface.refreshColor() }
+    view.needsDisplay = true
+    for child in view.subviews { styleControls(child) }
+  }
   static func asset(_ name: String, _ ext: String) -> URL {
     Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "assets")
       ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -17,13 +93,20 @@ enum ChromeTheme {
     }
     let standard = rgb(normal), paper = rgb(light), ink = rgb(dark)
     return NSColor(name: nil) { appearance in
+      if let palette = current.palette,
+        let i = [0x38b099, 0x1a2027, 0x22282f, 0x343d44, 0xe8f0f2, 0xa4b3ba].firstIndex(of: normal)
+      {
+        return rgb(palette[i])
+      }
       guard cartoon else { return standard }
       return appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua ? paper : ink
     }
   }
 
-  private static let symbols: [String: String] = {
-    guard let doc = try? XMLDocument(contentsOf: asset("ink-tools", "svg"), options: []),
+  private static var sprites = [String: [String: String]]()
+  private static func symbols(_ sprite: String) -> [String: String] {
+    if let cached = sprites[sprite] { return cached }
+    guard let doc = try? XMLDocument(contentsOf: asset(sprite, "svg"), options: []),
       let nodes = doc.rootElement()?.elements(forName: "symbol") else { return [:] }
     var values = [String: String]()
     for node in nodes {
@@ -31,13 +114,15 @@ enum ChromeTheme {
         values[key] = (node.children ?? []).map { $0.xmlString }.joined()
       }
     }
+    sprites[sprite] = values
     return values
-  }()
+  }
   private static let imageCache = NSCache<NSString, NSImage>()
   static func icon(_ name: String, color: NSColor) -> NSImage? {
-    guard let content = symbols[name], let tint = color.usingColorSpace(.sRGB) else { return nil }
+    guard let content = symbols(current.sprite)[name], let tint = color.usingColorSpace(.sRGB)
+    else { return nil }
     let fill = String(format: "#%02x%02x%02x", Int(tint.redComponent*255), Int(tint.greenComponent*255), Int(tint.blueComponent*255))
-    let key = (name + fill) as NSString
+    let key = (current.sprite + name + fill) as NSString
     if let image = imageCache.object(forKey: key) { return image }
     let svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'>" + content.replacingOccurrences(of: "currentColor", with: fill) + "</svg>"
     guard let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -97,6 +182,13 @@ final class ChromeButton: NSButton {
     }
   }
   var inkIcon: String? { didSet { if oldValue != inkIcon { needsDisplay = true } } }
+  private static let actionIcons = [
+    "arrow.uturn.backward": "undo", "arrow.uturn.forward": "redo", "sidebar.left": "pages",
+    "arrow.left.and.right": "fit", "checkmark.circle": "saved",
+    "doc.text.magnifyingglass": "preview",
+    "square.and.arrow.up": "share", "function": "solve", "chevron.down": "down", "folder": "open",
+    "plus": "plus", "minus": "minus", "questionmark.circle": "help", "doc.badge.plus": "new",
+  ]
   private let fallbackSymbol: String?
   var shortcut: String?
   var style: Style
@@ -107,8 +199,8 @@ final class ChromeButton: NSButton {
   var controlHeight: CGFloat = 30
   private var hover = false
   private var tracking: NSTrackingArea?
-  private let regularFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-  private let keyFont = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+  private var regularFont: NSFont { ChromeTheme.current.font(12, .medium) }
+  private var keyFont: NSFont { ChromeTheme.current.font(9, .medium) }
 
   init(
     _ caption: String = "", symbol: String? = nil, shortcut: String? = nil,
@@ -168,7 +260,8 @@ final class ChromeButton: NSButton {
 
   override func draw(_ dirtyRect: NSRect) {
     let area = bounds.insetBy(dx: 0.5, dy: 0.5)
-    let shape = NSBezierPath(roundedRect: area, xRadius: 6, yRadius: 6)
+    let shape = NSBezierPath(
+      roundedRect: area, xRadius: ChromeTheme.current.radius, yRadius: ChromeTheme.current.radius)
     let pressed = isHighlighted && isEnabled
     if style == .primary, isEnabled {
       (pressed ? appAccent.blended(withFraction: 0.18, of: .white) ?? appAccent : appAccent)
@@ -177,7 +270,8 @@ final class ChromeButton: NSButton {
     } else if selected || (hover && isEnabled) || style == .outlined {
       let fill =
         selected
-        ? (ChromeTheme.cartoon ? appAccent : NSColor(srgbRed: 0.17, green: 0.25, blue: 0.24, alpha: 1))
+        ? (ChromeTheme.current != .standard
+          ? appAccent : NSColor(srgbRed: 0.17, green: 0.25, blue: 0.24, alpha: 1))
         : chromeBorder.withAlphaComponent(pressed ? 0.95 : 0.57)
       fill.setFill()
       shape.fill()
@@ -188,7 +282,8 @@ final class ChromeButton: NSButton {
     }
     let foreground =
       (textColor
-      ?? ((style == .primary && isEnabled) || (ChromeTheme.cartoon && selected) ? chromeBackground : selected ? appAccent : chromeText))
+      ?? ((style == .primary && isEnabled) || (ChromeTheme.current != .standard && selected)
+        ? chromeBackground : selected ? appAccent : chromeText))
       .withAlphaComponent(isEnabled ? 1 : 0.38)
     if let swatch {
       let ring = NSBezierPath(
@@ -208,7 +303,10 @@ final class ChromeButton: NSButton {
     let iconWidth: CGFloat = symbol == nil ? 0 : (caption.isEmpty ? 14 : 20)
     let badgeWidth: CGFloat = shortcut == nil ? 0 : 21
     var x = max(5, (bounds.width - titleSize.width - iconWidth - badgeWidth) / 2)
-    let illustrated = ChromeTheme.cartoon ? inkIcon.flatMap { ChromeTheme.icon($0, color: foreground) } : nil
+    let mapped = inkIcon ?? symbol.flatMap { Self.actionIcons[$0] }
+    let illustrated =
+      ChromeTheme.current != .standard
+      ? mapped.flatMap { ChromeTheme.icon($0, color: foreground) } : nil
     if let symbol,
       let image = illustrated ?? (NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         ?? fallbackSymbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) })?
@@ -248,7 +346,7 @@ func chromeLabel(
   color: NSColor = chromeText
 ) -> NSTextField {
   let label = NSTextField(labelWithString: value)
-  label.font = .systemFont(ofSize: size, weight: weight)
+  label.font = ChromeTheme.current.font(size, weight)
   label.textColor = color
   return label
 }
@@ -278,7 +376,12 @@ final class NotebookGlyph: NSView {
     guard let image = NSImage(contentsOf: ChromeTheme.asset("pencil","png")) else { return nil }
     return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
   }()
-  private static let nib = NSImage(contentsOf: ChromeTheme.asset("pen-mark","svg"))
+  private static let marks: [NotebookTheme: NSImage] = Dictionary(
+    uniqueKeysWithValues: NotebookTheme.allCases.compactMap {
+      let (name, ext) = $0.mark
+      guard let img = NSImage(contentsOf: ChromeTheme.asset(name, ext)) else { return nil }
+      return ($0, img)
+    })
   let size: CGFloat
   init(size: CGFloat) {
     self.size = size
@@ -288,8 +391,9 @@ final class NotebookGlyph: NSView {
   override var intrinsicContentSize: NSSize { CGSize(width: size, height: size) }
   override func draw(_ dirtyRect: NSRect) {
     guard let context = NSGraphicsContext.current?.cgContext else { return }
-    if ChromeTheme.cartoon, let image = Self.mascotCG { context.draw(image, in: bounds) }
-    else if let nib = Self.nib { nib.draw(in: bounds) }
+    if let mark = Self.marks[ChromeTheme.current] {
+      mark.draw(in: bounds)
+    }
     else { Self.drawMark(in: bounds, context: context) }
   }
 
@@ -313,23 +417,12 @@ final class NotebookGlyph: NSView {
       context.addLine(to: CGPoint(x: p, y: 100))
     }
     context.strokePath()
-    context.setStrokeColor(CGColor(red: 0.91, green: 0.49, blue: 0.50, alpha: 0.64))
-    context.setLineWidth(1.2)
-    context.move(to: CGPoint(x: 27, y: 0))
-    context.addLine(to: CGPoint(x: 27, y: 100))
-    context.strokePath()
-    context.setStrokeColor(CGColor(red: 0.46, green: 0.85, blue: 0.76, alpha: 1))
-    context.setLineWidth(5.5)
-    context.setLineCap(.round)
-    context.setLineJoin(.round)
-    context.move(to: CGPoint(x: 17, y: 38))
-    context.addCurve(
-      to: CGPoint(x: 33, y: 39), control1: CGPoint(x: 22, y: 32), control2: CGPoint(x: 27, y: 33))
-    context.addLine(to: CGPoint(x: 40, y: 47))
-    context.addLine(to: CGPoint(x: 49, y: 24))
-    context.addLine(to: CGPoint(x: 61, y: 71))
-    context.addLine(to: CGPoint(x: 81, y: 71))
-    context.strokePath()
+    if let mark = marks[.standard] {
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+      mark.draw(in: CGRect(x: 16, y: 16, width: 68, height: 68))
+      NSGraphicsContext.restoreGraphicsState()
+    }
     context.restoreGState()
   }
 }

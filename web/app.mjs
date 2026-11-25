@@ -1,3 +1,4 @@
+import { imageSize } from "./image-size.mjs";
 import { pageSidebar } from "./pages.mjs";
 import { arrangedPages, sourceIndex } from "./engine.mjs";
 import { erasePart } from "./eraser.mjs";
@@ -9,6 +10,7 @@ import {
   cellFrame,
   shapeObject,
   align,
+  resizeGuides,
   recognizeCode,
 } from "./blocks.mjs";
 import { cameraSupported, capturePhoto } from "./camera.mjs";
@@ -453,7 +455,13 @@ async function openStored(id) {
 }
 async function newBook() {
   const notebook = blank();
-  if (theme() === "70s Cartoon") notebook.defaultPaper = { ruling: "Grid", tint: "Ivory", cartoon: true };
+  if (theme() !== "Default")
+    notebook.defaultPaper = {
+      ruling: "Grid",
+      tint: GridnoteAppearance.catalog[theme()].tint,
+      stationery: theme(),
+      cartoon: theme() === "70s Cartoon",
+    };
   await openBook(notebook, "Untitled Notebook");
   touchSave();
   await flush();
@@ -761,6 +769,28 @@ function paint() {
     }
     ctx.stroke();
   }
+  if (gesture?.measure) {
+    const { point, text } = gesture.measure;
+    ctx.save();
+    ctx.font = 11 / scale + "px " + measureTypeface;
+    const w = ctx.measureText(text).width + 12 / scale,
+      h = 21 / scale;
+    const x = clamp(
+      point[0] + 10 / scale,
+      left + 2 / scale,
+      left + view.clientWidth / scale - w - 2 / scale,
+    );
+    const y = clamp(
+      point[1] + 12 / scale,
+      top + 2 / scale,
+      top + view.clientHeight / scale - h - 2 / scale,
+    );
+    ctx.fillStyle = "#263536";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(text, x + 6 / scale, y + 14 / scale);
+    ctx.restore();
+  }
   const code =
       selection.size === 1 && tool === "selector" ? selected()[0] : null,
     cb = $("code-toggle");
@@ -1055,18 +1085,41 @@ function move(p, e) {
       dy = 0,
       k = 1,
       anchor = [0, 0];
+    if (settings().guides && !g.targets) {
+      const visible = [
+        [view.scrollLeft / scale, view.scrollTop / scale],
+        [view.clientWidth / scale, view.clientHeight / scale],
+      ];
+      g.targets = g.before
+        .filter((o) => !selection.has(o.id) && overlaps(o.frame, visible))
+        .map((o) => o.frame);
+    }
+    function dimensions(box) {
+      if (!settings().guides) return;
+      const { guides, matches } = resizeGuides(
+        box,
+        g.targets,
+        4 / scale,
+        g.anchor,
+      );
+      g.guides = guides;
+      g.measure = {
+        point: p,
+        text:
+          box[1].map((n) => ((n * 25.4) / 72).toFixed(1)).join(" × ") +
+          " mm" +
+          (matches.length ? " · " + matches.join("+") : ""),
+      };
+    }
     if (g.type === "move") {
-      dx = clamp(p[0] - g.start[0], -x, W - x - w);
+      dx = clamp(
+        p[0] - g.start[0],
+        Math.min(0, W - w) - x,
+        Math.max(0, W - w) - x,
+      );
       dy = Math.max(-y, p[1] - g.start[1]);
       g.guides = [];
       if (settings().guides && (Math.abs(dx) + Math.abs(dy)) * scale > 2) {
-        const visible = [
-          [view.scrollLeft / scale, view.scrollTop / scale],
-          [view.clientWidth / scale, view.clientHeight / scale],
-        ];
-        g.targets ??= g.before
-          .filter((o) => !selection.has(o.id) && overlaps(o.frame, visible))
-          .map((o) => o.frame);
         const a = align(
           [
             [x + dx, y + dy],
@@ -1075,7 +1128,11 @@ function move(p, e) {
           g.targets,
           4 / scale,
         );
-        dx = clamp(dx + a.adjust[0], -x, W - x - w);
+        dx = clamp(
+          dx + a.adjust[0],
+          Math.min(0, W - w) - x,
+          Math.max(0, W - w) - x,
+        );
         dy = Math.max(-y, dy + a.adjust[1]);
         g.guides = a.guides;
       }
@@ -1117,6 +1174,7 @@ function move(p, e) {
               : o,
           ),
         };
+        dimensions(book.objects.find((o) => o.id === t.id).frame);
         draw();
         return;
       }
@@ -1130,7 +1188,7 @@ function move(p, e) {
       k = clamp(
         (u[0] * v[0] + u[1] * v[1]) / Math.max(0.001, u[0] ** 2 + u[1] ** 2),
         0.07,
-        max,
+        Math.max(1, max),
       );
     }
     g.changed = !!(dx || dy || Math.abs(k - 1) > 0.001);
@@ -1142,6 +1200,11 @@ function move(p, e) {
           )
         : g.before,
     };
+    if (g.type === "resize")
+      dimensions([
+        [anchor[0] + (x - anchor[0]) * k, anchor[1] + (y - anchor[1]) * k],
+        [w * k, h * k],
+      ]);
   }
   draw();
 }
@@ -1628,22 +1691,34 @@ async function insertImage(file, onPage = null) {
   try {
     img.src = url;
     await img.decode();
-    const ratio = Math.min(
-        1,
-        4800 / Math.max(img.naturalWidth, img.naturalHeight),
-      ),
-      c = document.createElement("canvas");
-    c.width = Math.max(1, Math.round(img.naturalWidth * ratio));
-    c.height = Math.max(1, Math.round(img.naturalHeight * ratio));
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    const f = Math.min(
-        0.6,
-        Math.min(W * 0.78, Math.max(180, view.clientWidth / scale - 28)) /
-          c.width,
-        (H * 0.78) / c.height,
-      ),
-      p = insertion();
-    p[0] = Math.min(p[0], W - c.width * f);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const [width, height] = imageSize(
+      bytes,
+      img.naturalWidth,
+      img.naturalHeight,
+    );
+    let data;
+    if (
+      bytes[0] === 137 &&
+      bytes[1] === 80 &&
+      bytes[2] === 78 &&
+      bytes[3] === 71
+    )
+      data = bytes64(bytes);
+    else {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob)
+        throw Error("The image is too large to decode on this device.");
+      data = bytes64(new Uint8Array(await blob.arrayBuffer()));
+    }
+    const p = insertion();
+    p[0] = Math.max(0, Math.min(p[0], W - width));
     if (onPage !== null) {
       const top = onPage * H,
         last = book.objects
@@ -1652,9 +1727,12 @@ async function insertImage(file, onPage = null) {
             (m, o) => Math.max(m, o.frame[0][1] + o.frame[1][1]),
             top + 2 * G,
           );
-      const maxY = top + H - c.height * f - 2 * G;
-      const shownTop = clamp(view.scrollTop / scale + 2 * G, top + 2 * G, maxY);
-      p[0] = clamp((W - c.width * f) / 2, 4 * G + 3, W - c.width * f - G);
+      const maxY = Math.max(top, top + H - height - 2 * G);
+      const shownTop = Math.min(
+        maxY,
+        Math.max(top + 2 * G, view.scrollTop / scale + 2 * G),
+      );
+      p[0] = Math.max(0, (W - width) / 2);
       p[1] = last + G <= maxY ? Math.max(shownTop, last + G) : shownTop;
       if (
         p[1] < view.scrollTop / scale ||
@@ -1666,8 +1744,8 @@ async function insertImage(file, onPage = null) {
       [
         {
           id: uid(),
-          frame: [p, [c.width * f, c.height * f]],
-          content: { image: { _0: c.toDataURL("image/png").split(",")[1] } },
+          frame: [p, [width, height]],
+          content: { image: { _0: data } },
         },
       ],
       "Insert image",
@@ -1703,7 +1781,7 @@ function pasteCopies(items) {
       [view.clientWidth / scale, view.clientHeight / scale],
     ];
   const nearPage = overlaps(box, visible),
-    dx = clamp(nearPage ? x + 12 : p[0], 0, W - w) - x,
+    dx = clamp(nearPage ? x + 12 : p[0], 0, Math.max(0, W - w)) - x,
     dy = (nearPage ? y + 12 : p[1]) - y;
   replaceObjects(
     items.map((o) => ({ ...transform(o, [0, 0], 1, dx, dy), id: uid() })),
@@ -2185,31 +2263,52 @@ async function openLauncherChoice(action) {
   if (pausedView) view.scrollTo(pausedView.x * scale, pausedView.y * scale);
   draw();
 }
+let measureTypeface = "system-ui";
 function applyTheme() {
-  const cartoon = theme() === "70s Cartoon";
-  document.body.classList.toggle("seventies", cartoon);
-  document.body.classList.toggle("refined", !cartoon);
-  $("files").querySelector("img").src = cartoon ? "./assets/pencil.png" : "./assets/pen-mark.svg";
-  const actions = { settings:"settings", palette:"palette", addimage:"addimage", undo:"undo", redo:"redo" };
+  const style = GridnoteAppearance.apply(theme());
+  measureTypeface = getComputedStyle(document.body).fontFamily;
+  $("files").querySelector("img").src = "./assets/" + style.mark;
+  document.querySelector('link[rel="icon"]').href = "./assets/" + style.mark;
+  const actions = {
+    settings: "settings",
+    palette: "palette",
+    addimage: "addimage",
+    undo: "undo",
+    redo: "redo",
+  };
   for (const [id, icon] of Object.entries(actions)) {
     const control = $(id);
     if (!control.dataset.glyph) control.dataset.glyph = control.textContent;
-    if (cartoon) {
+    if (theme() !== "Default") {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("class","ink-glyph");
-      svg.setAttribute("aria-hidden","true");
-      svg.setAttribute("viewBox","0 0 24 24");
-      const use = document.createElementNS(svg.namespaceURI,"use");
-      use.setAttribute("href","./assets/ink-tools.svg#" + icon);
+      svg.setAttribute("class", "ink-glyph");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      const use = document.createElementNS(svg.namespaceURI, "use");
+      use.setAttribute("href", "./assets/" + style.sprite + ".svg#" + icon);
       svg.append(use);
       control.replaceChildren(svg);
     } else control.textContent = control.dataset.glyph;
   }
-  document.querySelector('meta[name="theme-color"]').content = cartoon ? "#f5f1e6" : "#1a2027";
+  document.querySelector('meta[name="theme-color"]').content = style.chrome;
+}
+function themeMenu(label, value, change) {
+  const row = $el("label", label),
+    picker = $el("select");
+  picker.setAttribute("aria-label", label);
+  GridnoteAppearance.fillPicker(picker);
+  picker.value = value;
+  picker.onchange = () => change(picker.value);
+  row.append(picker);
+  pop.append(row);
 }
 function settingsMenu() {
   openPop($("settings"), "device", "Options", () => {
-    choices("Theme", themes, theme(), value => { chooseTheme(value); applyTheme(); });
+    themeMenu("Theme", theme(), (value) => {
+      chooseTheme(value);
+      applyTheme();
+      refresh();
+    });
     pop.append($el("small", deviceLabel()));
     const label = $el("label", "Major"),
       select = $el("select");
@@ -2266,10 +2365,19 @@ function paperMenu() {
       changePaper({ ...design, ruling: x });
       paperMenu();
     });
-    checkOption("70s Cartoon paper", !!design.cartoon, enabled => {
-      changePaper({ ...design, cartoon: enabled });
-      paperMenu();
-    });
+    themeMenu(
+      "Stationery",
+      design.stationery || (design.cartoon ? "70s Cartoon" : "Default"),
+      (value) => {
+        changePaper({
+          ...design,
+          stationery: value,
+          cartoon: value === "70s Cartoon",
+          tint: GridnoteAppearance.catalog[value].tint || "White",
+        });
+        paperMenu();
+      },
+    );
     pop.append($el("small", "Paper color · " + design.tint));
     const names = Object.keys(tints);
     swatches(
@@ -2294,7 +2402,11 @@ async function fileMenu() {
     menuAction("Open notebook or PDF…", () => $("file").click());
     menuAction("Notebook launcher…", showStartScreen);
     menuAction("Help & About", () =>
-      window.open("./guide.html", "_blank", "noopener"),
+      window.open(
+        "./guide.html#theme=" + encodeURIComponent(theme()),
+        "_blank",
+        "noopener",
+      ),
     );
     if (book) {
       menuAction("Rename notebook…", () => {
@@ -2384,6 +2496,33 @@ async function fileMenu() {
     }
   });
 }
+function fitSelectedImage() {
+  const image = selected()[0];
+  if (!image || selection.size !== 1 || kind(image) !== "image") return;
+  const [[, y], [w, h]] = image.frame;
+  const factor = Math.min((W - 4 * G) / w, (H - 4 * G) / h);
+  const width = w * factor,
+    height = h * factor,
+    top = Math.floor(y / H) * H;
+  setObjects(
+    book.objects.map((o) =>
+      o.id === image.id
+        ? {
+            ...o,
+            layoutFrame: undefined,
+            frame: [
+              [
+                (W - width) / 2,
+                top + clamp(y - top, 2 * G, H - height - 2 * G),
+              ],
+              [width, height],
+            ],
+          }
+        : o,
+    ),
+    "Fit image to page",
+  );
+}
 function selectionMenu() {
   openPop($("selection"), "selection", "Selection", () => {
     menuAction("Copy", () => {
@@ -2400,6 +2539,8 @@ function selectionMenu() {
       () => deleteSelection(true),
       selected().some((o) => kind(o) === "ink"),
     );
+    if (selection.size === 1 && kind(selected()[0]) === "image")
+      menuAction("Fit image to page", fitSelectedImage);
     menuAction("Delete selection", () => deleteSelection());
   });
 }
@@ -2697,7 +2838,12 @@ function updateToolIcon(id, button, prefs) {
   button.dataset.theme = theme();
   button.dataset.mode = mode;
   const key = iconModes[id]?.[mode] || "marker";
-  button.querySelector("use").setAttribute("href", (theme() === "70s Cartoon" ? "./assets/ink-tools.svg#" : "./assets/tools.svg#") + key);
+  button
+    .querySelector("use")
+    .setAttribute(
+      "href",
+      "./assets/" + GridnoteAppearance.catalog[theme()].sprite + ".svg#" + key,
+    );
   if (id === "marker") button.querySelector("svg").style.color = rgb(markers[prefs.markerInk]);
   const [family, shortcut] = toolNames[id];
   button.title = family + " · " + mode + (shortcut ? " (" + shortcut + ")" : "");

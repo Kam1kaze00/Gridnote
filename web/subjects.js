@@ -1,4 +1,10 @@
-document.documentElement.classList.toggle("cartoon", new URLSearchParams(location.search).get("theme") === "70s Cartoon");
+const appearance = GridnoteAppearance.apply(
+  new URLSearchParams(location.search).get("theme"),
+);
+document.documentElement.classList.toggle(
+  "cartoon",
+  appearance.id === "seventies",
+);
 const $ = (id) => document.getElementById(id);
 const selectedMajor = decodeURIComponent(location.hash.slice(1)),
   tools = GridnoteKits.kits[selectedMajor] || [];
@@ -156,6 +162,7 @@ function render() {
 }
 for (const t of tools) $("tool").append(option(t.name));
 const requestedTool = new URLSearchParams(location.search).get("tool");
-if (tools.some(t => t.name === requestedTool)) $("tool").value = requestedTool;
+if (tools.some((t) => t.name === requestedTool))
+  $("tool").value = requestedTool;
 $("tool").onchange = render;
 render();

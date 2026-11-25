@@ -605,7 +605,7 @@ footer #selection {
 #tool-table .tool-name {
   display: none;
 }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   #toolset button .glyph {
     display: inline;
   }
@@ -771,3 +771,11 @@ body.launching > header,body.launching > nav,body.launching #stage,body.launchin
 #subject-strip strong {font-size:11px; font-weight:600; color:#a7cec2; white-space:nowrap; margin-right:4px}
 #subject-strip button {white-space:nowrap; font-size:12px; min-height:29px; background:#2c373b; border:1px solid #3d4c50; border-radius:6px; padding:3px 10px}
 @media(pointer:coarse) {#subject-strip button {min-height:44px}}
+
+#bottom{flex-wrap:wrap;row-gap:1px}
+.footer-pages,.footer-zoom{display:flex;align-items:center;gap:inherit;max-width:100%}
+.footer-zoom{margin-inline-start:auto}
+@media(max-width:410px){#bottom{padding-block:2px}.footer-pages,.footer-zoom{column-gap:1px}}
+
+#tools{overflow-x:auto;scrollbar-width:thin}
+#toolset,#tools>button,#inks{flex-shrink:0}

@@ -63,7 +63,8 @@ def check_desktop(packages, folder, system, machine):
             else:
                 raise RuntimeError("Desktop launcher did not start")
             for path, marker in [("", b'id="welcome"'), ("launcher.js", b"Continue notebook"),
-                                 ("majors.js", b"Binary search"), ("assets/launcher.jpg", b"\xff\xd8")]:
+                                 ("majors.js", b"Binary search"), ("assets/default-cover.svg", b"Gridnote"),
+                                 ("assets/pixel-tools.svg", b"symbol"), ("assets/pixelifysans.ttf", b"\x00\x01\x00\x00")]:
                 with urlopen(origin + path, timeout=5) as response:
                     assert marker in response.read(), path
         finally:

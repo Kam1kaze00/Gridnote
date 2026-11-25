@@ -37,7 +37,7 @@ final class SubjectToolsController: NSViewController {
       ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
       .appendingPathComponent("web/subjects.html")
     var parts = URLComponents(url: url.absoluteURL, resolvingAgainstBaseURL: true)
-    var query = [URLQueryItem(name: "theme", value: ChromeTheme.cartoon ? "70s Cartoon" : "Default")]
+    var query = [URLQueryItem(name: "theme", value: ChromeTheme.current.rawValue)]
     if let tool { query.append(URLQueryItem(name: "tool", value: tool)) }
     parts?.queryItems = query
     parts?.fragment = major

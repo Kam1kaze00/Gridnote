@@ -141,6 +141,8 @@ const { chromium } = require("playwright"),
     dimensions[0] < 1000 && dimensions[1] < 700,
     "cropped image is smaller than the captured frame",
   );
+  for (const [i, pixels] of dimensions.entries())
+    assert(Math.abs(image.frame[1][i] - (pixels * 72) / 96) < 0.1);
   console.log(
     "PASS phone touch drawing, palm-safe navigation, rear camera constraint, crop, page-aware placement, released camera and compact layout",
   );

@@ -46,6 +46,37 @@ import WebKit
     expect(PenPreferences(defaults: defaults).cartoonTheme, "appearance is shared by saved pen preferences")
     preferences.restore()
     expect(!preferences.cartoonTheme, "restore all settings returns to the Default appearance")
+    for theme in NotebookTheme.allCases {
+      preferences.theme = theme
+      ChromeTheme.current = theme
+      expect(
+        PenPreferences(defaults: defaults).theme == theme
+          && ChromeTheme.icon("pen", color: .black) != nil,
+        "native toolbar and saved theme: " + theme.rawValue)
+      if theme == .pixel {
+        expect(
+          theme.font(12).familyName?.contains("Pixelify") == true,
+          "native pixel typeface loads offline")
+      }
+    }
+    preferences.restore()
+    ChromeTheme.current = .standard
+    let resized = resizeFeedback(
+      CGRect(x: 10, y: 10, width: 100, height: 50),
+      targets: [CGRect(x: 140, y: 100, width: 100, height: 49)], fixed: CGPoint(x: 10, y: 10),
+      tolerance: 2)
+    expect(
+      resized.matches == ["W", "H"] && resized.guides.count >= 12,
+      "resize guides compare both dimensions with other objects")
+    let sampleImage = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: 400, pixelsHigh: 200, bitsPerSample: 8, samplesPerPixel: 4,
+      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    sampleImage.size = CGSize(width: 200, height: 100)
+    let retina = try PaperRenderer.importImage(
+      sampleImage.representation(using: .png, properties: [:])!)
+    expect(
+      abs(retina.size.width - 200) < 0.1 && abs(retina.size.height - 100) < 0.1,
+      "Retina screenshot keeps its logical size")
     let storage = NotebookStorage(directory: directory)
     let pb = NSPasteboard.withUniqueName()
     let owner = NotebookWindow(storage: storage, preferences: preferences, clipboard: pb)
@@ -606,6 +637,35 @@ import WebKit
       preferences.cartoonTheme = false
       canvas.refreshTool()
 
+      let priorSize = win.frame.size
+      for theme in [NotebookTheme.tokyo, .cyber, .pixel] {
+        preferences.theme = theme
+        canvas.refreshTool()
+        canvas.setPaper(.themed(theme), on: nil)
+        for width: CGFloat in [760, 1024] {
+          win.setContentSize(CGSize(width: width, height: 600))
+          win.contentView?.layoutSubtreeIfNeeded()
+          pump(0.05)
+          func visibleButtons(_ view: NSView) -> [ChromeButton] {
+            guard !view.isHidden else { return [] }
+            return (view as? ChromeButton).map { [$0] } ?? view.subviews.flatMap(visibleButtons)
+          }
+          let buttons = visibleButtons(win.contentView!)
+          for group in Dictionary(grouping:buttons.filter { $0.superview is NSStackView }, by:{ObjectIdentifier($0.superview!) }).values {
+            let row = group.sorted { $0.frame.minX < $1.frame.minX }
+            if (row.first?.superview as? NSStackView)?.orientation == .horizontal {
+              expect(zip(row,row.dropFirst()).allSatisfy { $0.frame.maxX <= $1.frame.minX + 1 }, "Mac toolbar and major buttons have separate hit areas")
+            }
+          }
+          expect(ChromeTheme.current == theme && win.contentView!.bounds.width >= 750, "active Mac editor lays out " + theme.rawValue + " at " + String(Int(width)) + " points")
+        }
+        let pdf = try canvas.renderer.export(canvas.notebook)
+        expect(PDFDocument(data: pdf)?.pageCount == canvas.notebook.usedPages, theme.rawValue + " stationery exports all used pages")
+        canvas.history.undo()
+      }
+      win.setFrame(CGRect(origin:win.frame.origin,size:priorSize), display:true)
+      preferences.theme = .standard
+      canvas.refreshTool()
       try canvas.renderer.export(canvas.notebook).write(to: qa.appendingPathComponent("demo.pdf"))
       if ProcessInfo.processInfo.environment["GRIDNOTE_TEST_FULLSCREEN"] == "1" {
         win.toggleFullScreen(nil)

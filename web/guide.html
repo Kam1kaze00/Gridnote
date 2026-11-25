@@ -90,7 +90,9 @@
       To change your major, reopen Notebook Launcher from File on Mac or the notebook menu on the web.
     </p>
     <h2>Appearance and paper</h2>
-    <p>Choose Theme on the launcher or open Options in the writing toolbar. Default opens on first use. Changing the theme updates the launcher artwork and controls immediately. The launcher remembers your choice. Default uses a pen nib and 70s Cartoon uses the pencil mascot. New cartoon notebooks start on ivory grid paper with a double margin and printed page numbers. In an existing notebook, choose Paper → 70s Cartoon paper for a page or the notebook default. Paper settings travel with the editable notebook and PDF.</p>
+    <p>Choose a theme on the launcher or in Options. Default opens with the Drafting Room illustration. Try the inked pencil of 70s Cartoon, Tokyo Neon's route signs, Cyberpunk's amber instrument panel, or Pixelated's handheld lettering. Fonts and tool icons work offline.</p>
+    <p>A new notebook starts on its theme’s stationery. In an existing notebook, open <b>Paper → Stationery</b> and choose This page or Notebook default. Grid, ruled, dotted and whiteboard paper each support the paper color you choose. Paper settings travel with the notebook and appear in its PDF.</p>
+    <p>Pasted images and camera crops keep their source dimensions. When an image supplies a print density, Gridnote uses it. Other images use 96 pixels per inch. For a large image choose <b>Selection → Fit Image to Page</b>. Drag a corner to see millimetres and matching widths or heights when alignment guides are on. Undo restores the previous size.</p>
     <h2>Saving and sharing</h2>
     <p>
       A saved indicator reports local writes. The notebook menu can save an
@@ -122,4 +124,11 @@
       Gridnote 1.2.0 · An open-source notebook for students · MIT License
     </footer>
   </main>
+  <link rel="stylesheet" href="themes.css">
+  <script src="appearance.js"></script>
+  <script>
+    let name = new URLSearchParams(location.hash.slice(1)).get("theme");
+    try { name ||= JSON.parse(localStorage.getItem("gridnote-pens") || "{}").theme } catch {}
+    GridnoteAppearance.apply(name);
+  </script>
 </html>

@@ -137,7 +137,9 @@ struct AlignGuide: Equatable {
       height: max(1, abs(a.y - b.y)))
   }
 }
-func alignment(for moving: CGRect, near targets: [CGRect], tolerance: CGFloat) -> (
+func alignment(
+  for moving: CGRect, near targets: [CGRect], tolerance: CGFloat, fixed: CGPoint? = nil
+) -> (
   CGPoint, [AlignGuide]
 ) {
   var adjust = CGPoint.zero
@@ -151,6 +153,7 @@ func alignment(for moving: CGRect, near targets: [CGRect], tolerance: CGFloat) -
     for target in targets {
       let span = moving.union(target)
       for m in marks(moving) {
+        if let fixed, abs(m - (horizontal ? fixed.x : fixed.y)) < 0.01 { continue }
         for t in marks(target) where abs(t - m) < best {
           best = abs(t - m)
           if horizontal {
@@ -166,4 +169,28 @@ func alignment(for moving: CGRect, near targets: [CGRect], tolerance: CGFloat) -
     if let chosen { guides.append(chosen) }
   }
   return (adjust, guides)
+}
+
+func resizeFeedback(_ frame: CGRect, targets: [CGRect], fixed: CGPoint, tolerance: CGFloat) -> (
+  guides: [AlignGuide], matches: [String]
+) {
+  var guides = alignment(for: frame, near: targets, tolerance: tolerance, fixed: fixed).1
+  var matches = [String]()
+  for width in [true, false] {
+    func distance(_ target: CGRect) -> CGFloat {
+      abs(width ? target.width - frame.width : target.height - frame.height)
+    }
+    guard let target = targets.min(by: { distance($0) < distance($1) }),
+      distance(target) <= tolerance
+    else { continue }
+    matches.append(width ? "W" : "H")
+    for f in [frame, target] {
+      let a = width ? CGPoint(x: f.minX, y: f.midY) : CGPoint(x: f.midX, y: f.minY)
+      let b = width ? CGPoint(x: f.maxX, y: f.midY) : CGPoint(x: f.midX, y: f.maxY)
+      let tick = width ? CGPoint(x: 0, y: tolerance) : CGPoint(x: tolerance, y: 0)
+      guides.append(.init(a: a, b: b))
+      for end in [a, b] { guides.append(.init(a: end - tick, b: end + tick)) }
+    }
+  }
+  return (guides, matches)
 }

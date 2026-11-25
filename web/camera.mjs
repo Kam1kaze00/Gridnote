@@ -132,9 +132,8 @@ export async function capturePhoto() {
           "Wait for the rear camera to focus, then capture again.";
         return;
       }
-      const k = Math.min(1, 4800 / Math.max(w, h));
-      photo.width = Math.round(w * k);
-      photo.height = Math.round(h * k);
+      photo.width = w;
+      photo.height = h;
       photo.getContext("2d").drawImage(source, 0, 0, photo.width, photo.height);
       stop();
       hasFrame = true;

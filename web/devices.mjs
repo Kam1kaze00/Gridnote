@@ -51,8 +51,10 @@ export function chooseMajor(v) {
     remember();
   }
 }
-export const themes = ["Default", "70s Cartoon"];
-export function theme() { return prefs.theme === themes[1] ? themes[1] : themes[0]; }
+export const themes = Object.keys(GridnoteAppearance.catalog);
+export function theme() {
+  return themes.includes(prefs.theme) ? prefs.theme : themes[0];
+}
 export function chooseTheme(value) {
   if (themes.includes(value)) { prefs.theme = value; remember(); }
 }

@@ -93,6 +93,7 @@
       </div>
     </main>
     <footer id="bottom" hidden>
+      <div class="footer-pages">
       <button
         id="page"
         title="Page thumbnails"
@@ -104,11 +105,11 @@
       ><button id="undo" title="Undo" aria-label="Undo">↶</button
       ><button id="redo" title="Redo" aria-label="Redo">↷</button
       ><button id="selection" hidden>Selection</button>
-      <div class="spacer"></div>
+      </div><div class="footer-zoom">
       <button id="zoomout" aria-label="Zoom out">−</button
       ><span id="zoom">100%</span
       ><button id="zoomin" aria-label="Zoom in">＋</button
-      ><button id="fit">Fit Width</button>
+      ><button id="fit">Fit Width</button></div>
     </footer>
     <section id="popover" role="dialog" hidden></section>
     <dialog id="pdfmodal">
@@ -133,6 +134,7 @@
       hidden
     /><input id="imagefile" type="file" accept="image/*" multiple hidden />
     <div id="notice" role="status" hidden></div>
+    <script src="./appearance.js"></script>
     <script src="./majors.js"></script>
     <script src="./launcher.js"></script>
     <script src="./solver.js"></script>

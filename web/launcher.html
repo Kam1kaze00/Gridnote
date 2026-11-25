@@ -20,10 +20,10 @@
   </head>
   <body>
     <main id="launcher" class="launcher-host"></main>
+    <script src="appearance.js"></script>
     <script src="majors.js"></script>
     <script src="launcher.js"></script>
     <script>
-      document.body.classList.toggle("seventies", window.launchOptions?.theme === "70s Cartoon");
       const bridge = window.webkit?.messageHandlers?.gridnoteLauncher;
       if (!bridge) location.replace("./");
       else

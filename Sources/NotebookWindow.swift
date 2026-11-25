@@ -29,7 +29,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   var requestLauncher: (() -> Void)?
   private let subjectScroll = NSScrollView()
   private var subjectHeight: NSLayoutConstraint!
-  private var displayedCartoon: Bool?
+  private var displayedTheme: NotebookTheme?
   private var displayedMajor: String?
   private var solveButton: ChromeButton!
   private var preview: PDFPreviewController?
@@ -73,7 +73,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     self.storage = storage
     session = (try? storage.loadSession()) ?? NotebookSession()
     self.preferences = preferences
-    ChromeTheme.cartoon = preferences.cartoonTheme
+    ChromeTheme.current = preferences.theme
     canvas = NoteCanvas(preferences: preferences, clipboard: clipboard)
     let window = NSWindow(
       contentRect: CGRect(x: 0, y: 0, width: 1140, height: 770),
@@ -582,7 +582,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       guard commitCurrent() else { return }
       let url = try storage.localURL(named: "Untitled Notebook")
       var notebook = Notebook()
-      if preferences.cartoonTheme { notebook.defaultPaper = PaperDesign(ruling: .grid, tint: .ivory, cartoon: true) }
+      if preferences.theme != .standard { notebook.defaultPaper = .themed(preferences.theme) }
       try storage.saveNow(notebook, to: url)
       showNotebook(notebook, at: url, position: ViewPosition())
     } catch { alert("Couldn’t create a notebook", error: error) }
@@ -853,6 +853,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     popover.behavior = .transient
     popover.appearance = ChromeTheme.appearance
     popover.contentViewController = panel
+    ChromeTheme.styleControls(panel.view)
     popover.contentSize = panel.preferredContentSize
     let anchor = sender as? NSView ?? button
     popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
@@ -866,23 +867,21 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   @objc func deletePage(_ sender: Any?) { canvas.deletePage(page) }
 
   private func applyTheme() {
-    let cartoon = preferences.cartoonTheme
-    guard displayedCartoon != cartoon else { return }
-    displayedCartoon = cartoon
-    ChromeTheme.cartoon = cartoon
+    let theme = preferences.theme
+    guard displayedTheme != theme else { return }
+    displayedTheme = theme
+    ChromeTheme.current = theme
     window?.appearance = ChromeTheme.appearance
     toolbar.appearance = NSAppearance(named: .darkAqua)
     footer.appearance = NSAppearance(named: .darkAqua)
-    documentName.font = cartoon ? (NSFont(name: "Georgia-Bold", size: 16) ?? .boldSystemFont(ofSize: 16)) : .systemFont(ofSize: 15, weight: .semibold)
+    documentName.font = theme.font(15, .semibold)
     displayedMajor = nil
     settingsPopover?.appearance = ChromeTheme.appearance
-    func redraw(_ view: NSView) {
-      if let surface = view as? Surface { surface.refreshColor() }
-      view.needsDisplay = true
-      for child in view.subviews { redraw(child) }
+    if let root = window?.contentView { ChromeTheme.styleControls(root) }
+    if let popView = settingsPopover?.contentViewController?.view {
+      ChromeTheme.styleControls(popView)
     }
-    if let root = window?.contentView { redraw(root) }
-    if let popView = settingsPopover?.contentViewController?.view { redraw(popView) }
+    pagesSidebar.refreshPalette()
   }
   private func updateTools() {
     guard palette != nil, fitButton != nil else { return }
@@ -946,6 +945,12 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       item.target = canvas
       menu.addItem(item)
     }
+    if canvas.selectedImageIndex != nil {
+      let item = menu.addItem(
+        withTitle: "Fit Image to Page", action: #selector(NoteCanvas.fitSelectedImage(_:)),
+        keyEquivalent: "")
+      item.target = canvas
+    }
     menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY), in: sender)
   }
 
@@ -998,6 +1003,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     popover.behavior = .transient
     popover.appearance = ChromeTheme.appearance
     popover.contentViewController = panel
+    ChromeTheme.styleControls(panel.view)
     popover.contentSize = panel.preferredContentSize
     popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
     settingsPopover = popover
@@ -1020,6 +1026,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     }
     pane.didRestore = { [weak self] in self?.canvas.refreshTool() }
     popover.contentViewController = pane
+    ChromeTheme.styleControls(pane.view)
     popover.contentSize = pane.preferredContentSize
     popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     settingsPopover = popover
@@ -1027,7 +1034,9 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
 
   @objc func quickGuide(_ sender: Any?) {
     if let url = Bundle.main.url(forResource: "guide", withExtension: "html") {
-      NSWorkspace.shared.open(url)
+      var link = URLComponents(url: url, resolvingAgainstBaseURL: false)
+      link?.fragment = "theme=" + preferences.theme.rawValue
+      NSWorkspace.shared.open(link?.url ?? url)
     }
   }
   @objc func markerTool(_ sender: Any?) { activate(.marker, sender: nil) }
@@ -1080,7 +1089,9 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     guard !names.isEmpty else { subjectScroll.documentView = nil; return }
     let label = chromeLabel(major, size: 11, weight: .semibold, color: appAccent)
     let buttons = names.map { name -> ChromeButton in
-      let button = ChromeButton(name, style: preferences.cartoonTheme ? .outlined : .plain, target: self, action: #selector(openSubjects(_:)))
+      let button = ChromeButton(
+        name, style: preferences.theme != .standard ? .outlined : .plain, target: self,
+        action: #selector(openSubjects(_:)))
       button.controlHeight = 26
       return button
     }
@@ -1102,6 +1113,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     }
     _ = panel.view
     pop.contentViewController = panel
+    ChromeTheme.styleControls(panel.view)
     pop.contentSize = panel.preferredContentSize
     pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     settingsPopover = pop
@@ -1150,6 +1162,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     panel.behavior = .transient
     panel.appearance = ChromeTheme.appearance
     panel.contentViewController = controller
+    ChromeTheme.styleControls(controller.view)
     panel.contentSize = controller.preferredContentSize
     if let problem {
       panel.show(
