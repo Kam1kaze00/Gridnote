@@ -188,6 +188,19 @@ async function main() {
     const angle = Math.atan2(end[1]-start[1], end[0]-start[0]) * 12 / Math.PI;
     assert(Math.abs(angle - Math.round(angle)) < 0.00001);
     assert(shape.content.ink._0.every(p => p.radius === 2));
+    await page.click("#tool-shapes");
+    await page.getByRole("button", {name:"X–Y axes", exact:true}).click();
+    assert.match(await page.locator("#tool-shapes use").getAttribute("href"), /#axes$/);
+    await page.keyboard.press("Escape");
+    await drag(360, 225, 270, 165);
+    const axes = (await book()).objects.at(-1);
+    assert.equal(axes.instrument, "shape");
+    const [[ax, ay], [aw, ah]] = axes.frame;
+    const center = [ax + aw/2, ay + ah/2];
+    const vertices = axes.content.ink._0.map(p => p.position);
+    assert(vertices.some(p => Math.hypot(p[0]-center[0], p[1]-center[1]) < 0.01));
+    assert.equal(vertices[0][0], ax + 2); // Left end even for a reversed drag.
+    await page.keyboard.press("Control+z");
     await page.click("#tool-text");
     await page.getByLabel("Insert code block").check();
     await page.getByRole("slider", {name:"Type size"}).fill("17");

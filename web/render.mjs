@@ -5,6 +5,7 @@ import {
   G,
   kind,
   inkPath,
+  ballpointCorePath,
   rgb,
   tints,
   paper,
@@ -212,6 +213,20 @@ export function paintPaper(ctx, page, design) {
   ctx.restore();
 }
 export {textLines} from "./blocks.mjs";
+export function inkFootprint(o) {
+  const core = ballpointCorePath(o);
+  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null};
+}
+export function paintFootprint(ctx, paths, color) {
+  ctx.fillStyle = rgb(color);
+  if (paths.core) {
+    ctx.save();
+    ctx.globalAlpha *= 0.43;
+    ctx.fill(paths.body);
+    ctx.restore();
+    ctx.fill(paths.core);
+  } else ctx.fill(paths.body);
+}
 export function paintObject(ctx, o, onReady) {
   const [[x, y], [w, h]] = o.frame;
   if (o.table || o.codeStyle != null) {
@@ -221,7 +236,7 @@ export function paintObject(ctx, o, onReady) {
   if (kind(o) === "ink") {
     let p = paths.get(o);
     if (!p) {
-      p = new Path2D(inkPath(o));
+      p = inkFootprint(o);
       paths.set(o, p);
     }
     ctx.save();
@@ -229,8 +244,7 @@ export function paintObject(ctx, o, onReady) {
       ctx.globalCompositeOperation = "multiply";
       ctx.globalAlpha = o.opacity ?? 0.38;
     }
-    ctx.fillStyle = rgb(o.content.ink._1);
-    ctx.fill(p);
+    paintFootprint(ctx, p, o.content.ink._1);
     ctx.restore();
     return;
   }
@@ -394,14 +408,17 @@ export async function makePDF(book, source, progress) {
       const [[x, y], [w, h]] = o.frame;
       if (kind(o) === "ink") {
         const c = o.content.ink._1;
-        page.drawSvgPath(inkPath(o), {
+        const core = ballpointCorePath(o);
+        const options = {
           x: 0,
           y: H + top,
           color: lib.rgb(c.r, c.g, c.b),
-          opacity: o.opacity ?? 1,
+          opacity: core ? 0.43 : (o.opacity ?? 1),
           blendMode:
             o.instrument === "marker" ? lib.BlendMode.Multiply : undefined,
-        });
+        };
+        page.drawSvgPath(inkPath(o), options);
+        if (core) page.drawSvgPath(core, {...options, opacity: 1});
       } else if (kind(o) === "image") {
         let img = pngs.get(o.id);
         if (!img) {

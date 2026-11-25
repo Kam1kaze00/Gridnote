@@ -5,6 +5,7 @@ enum ShapeKind: String, CaseIterable {
   case arrow = "Arrow"
   case rectangle = "Box"
   case ellipse = "Oval"
+  case axes = "X–Y axes"
 }
 
 struct NotebookTextFormat: Codable, Equatable {
@@ -115,6 +116,26 @@ func shapeInk(
     points += [tip - u * wing + n, tip, tip - u * wing - n]
   case .rectangle:
     points = [start, CGPoint(x: tip.x, y: start.y), tip, CGPoint(x: start.x, y: tip.y), start]
+  case .axes:
+    let cx = (start.x + tip.x) / 2, cy = (start.y + tip.y) / 2
+    let halfX = abs(tip.x - start.x) / 2, halfY = abs(tip.y - start.y) / 2
+    guard min(halfX, halfY) >= max(3, width) else { return nil }
+    let spacing = max(paperGrid, width * 6)
+    let tick = min(spacing * 0.18, min(halfX, halfY) * 0.12)
+    func axis(_ half: CGFloat, _ at: (CGFloat, CGFloat) -> CGPoint) -> [CGPoint] {
+      let head = min(max(4.5, width * 3.5), half * 0.36)
+      var line = [at(-half, 0)]
+      let count = Int(floor(max(0, half - head - tick) / spacing))
+      for k in -count...count where k != 0 {
+        let mark = CGFloat(k) * spacing
+        line += [at(mark, 0), at(mark, -tick), at(mark, tick), at(mark, 0)]
+      }
+      line += [at(half, 0), at(half - head, head * 0.48), at(half, 0),
+               at(half - head, -head * 0.48), at(half, 0), at(0, 0)]
+      return line
+    }
+    points = axis(halfX) { CGPoint(x: cx + $0, y: cy + $1) }
+           + axis(halfY) { CGPoint(x: cx + $1, y: cy - $0) }
   case .ellipse:
     let center = (start + tip) * 0.5
     let r = (tip - start) * 0.5

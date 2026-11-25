@@ -32,7 +32,8 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 
 ## In a lecture
 
-- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. **Writer** offers Pen, Brush and Fineliner. Each tip remembers its width. Pen has a subtle change in line weight, Brush has a wider pressure range, and Fineliner keeps a constant width.
+- Write with **Q**, select with **W**, erase with **E**, and type with **R**. Tap a tool for options. Its icon shows the selected tip, selection shape, eraser mode, text mode, shape or table style. **Writer** offers Pen, Brush and Fineliner. Each tip remembers its width. Press lightly with Pen for pale ballpoint hatching. Press harder for a darker line. Brush can go from a hairline to a broad downstroke in one movement. Fineliner gives diagrams and small symbols an even outline.
+- Choose **Shapes → X–Y axes** and drag out a graph. Its centered axes and equally spaced ticks move and resize as one object.
 - Tap a text block or table cell with **Selector** to edit it. Drag to move it. **Text** changes its size, color, alignment, bold, italic or underline. On a tablet, use the arrows to move between cells and **Done** to return to the page. With a keyboard, use **Tab** and **Shift+Tab**.
 - Open **Table** and choose columns and rows on the insertion grid, or drag on the paper for a custom footprint. Table options format the whole table. Open **Text** while editing a cell to format just that cell. [See the table picker](docs/images/table-picker.png).
 - On a two-button pen, tap the upper switch, erase, then lift to return to Writer. Hold the lower switch and move vertically to scroll.
@@ -40,6 +41,8 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 - Tap the page control for thumbnails. Insert, move or delete pages with their PDF backgrounds and annotations. **Clear Writing** beside the paper control removes Pen, Brush and Fineliner strokes from the current page. Typed notes, highlights, shapes, images and tables stay in place. Undo restores the handwriting. To remove typed notes, use **Remove Typed Text** in the notebook menu (Edit on Mac).
 - Choose **Solve** to open a single exercise. On a page with several, tap the highlighted problem you want. Review the recognized text beside the scan. Arithmetic, real linear and quadratic equations, common unit conversions and simple code fragments work offline. Open-ended questions can use the optional tutor.
 - **Preview PDF** opens at the current page. **Share** opens the system share sheet on supported devices. **Export PDF** saves the same A4 document.
+
+![Pen, Brush and Fineliner drawing identical strokes, beside a graph created with the X–Y axes shape](docs/images/writer-and-axes.png)
 
 ![Tablet notebook with the Writer panel open and Pen selected](docs/images/tablet-writing.png)
 

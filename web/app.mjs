@@ -39,7 +39,6 @@ import {
   contains,
   overlaps,
   makeInk,
-  inkPath,
   smooth,
   touchesInk,
   hit,
@@ -66,7 +65,7 @@ import {
   mobileSurface,
   fingerWrites,
   useFinger,
-  pressureResponse,
+  sampledRadius,
   restore,
   majors,
   major,
@@ -76,6 +75,8 @@ import {
   deviceHelp,
 } from "./devices.mjs";
 import {
+  inkFootprint,
+  paintFootprint,
   paintPaper,
   paintObject,
   drawPDFImage,
@@ -638,24 +639,27 @@ function paintLiveInk(g) {
   function section(start, end) {
     const raw = g.raw.slice(start, end),
       times = g.times.slice(start, end);
-    return new Path2D(
-      inkPath(makeInk(smooth(raw, g.smoothing, times), g.color, g.id)),
-    );
+    const o = makeInk(smooth(raw, g.smoothing, times), g.color, g.id);
+    o.ballpointWidth = g.ballpointWidth;
+    return inkFootprint(o);
+  }
+  function add(target, part) {
+    target.body.addPath(part.body);
+    if (part.core) target.core.addPath(part.core);
   }
   while (g.raw.length - g.previewStart > 100) {
     const end = g.previewStart + 96;
-    g.prefix.addPath(section(g.previewStart, end + 1));
+    add(g.prefix, section(g.previewStart, end + 1));
     g.previewStart = end;
   }
-  const outline = new Path2D(g.prefix);
-  outline.addPath(section(g.previewStart, g.raw.length));
+  const outline = {body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
+  add(outline, section(g.previewStart, g.raw.length));
   ctx.save();
-  ctx.fillStyle = rgb(g.color);
   if (g.marker) {
     ctx.globalAlpha = g.prefs.opacity;
     ctx.globalCompositeOperation = "multiply";
   }
-  ctx.fill(outline);
+  paintFootprint(ctx, outline, g.color);
   ctx.restore();
 }
 function paint() {
@@ -888,21 +892,11 @@ function pickTool(id) {
   refresh();
   recordView();
 }
-function scaledPressure(e, p) {
-  let value = 1;
-  if (e.pointerType === "pen" && devices[device][1])
-    value = pressureResponse(p, e.pressure);
-  return p.width * 0.5 * value;
-}
 function append(e, p, isUp = false) {
-  const g = gesture,
-    last = g.raw.at(-1);
-  let radius = isUp && last ? last.radius : scaledPressure(e, g.prefs);
-  if (!isUp && last && e.pointerType === "pen") {
-    const dt = Math.max(0.001, e.timeStamp * 0.001 - g.times.at(-1));
-    radius += (last.radius - radius) * Math.exp(-dt / 0.005);
-  }
-  if (g.marker) radius = g.prefs.markerWidth / 2;
+  const g = gesture, last = g.raw.at(-1), now = e.timeStamp * 0.001;
+  const radius = g.marker ? g.prefs.markerWidth / 2 : sampledRadius(g.prefs,
+    g.stylus && !isUp ? e.pressure : null, last?.radius, last ? dist(last.position, p) : 0,
+    now - (g.times.at(-1) ?? now), isUp, g.stylus);
   p = [
     clamp(p[0], radius, W - radius),
     clamp(p[1], radius, pages * H - radius),
@@ -930,6 +924,7 @@ function currentInk() {
       gesture.color,
       gesture.id,
     );
+    if (gesture.ballpointWidth) liveInk.ballpointWidth = gesture.ballpointWidth;
     if (gesture.marker) {
       liveInk.instrument = "marker";
       liveInk.opacity = gesture.prefs.opacity;
@@ -977,11 +972,14 @@ function begin(p, e) {
   const mode = effective(),
     prefs = settings();
   if (mode === "brush" || mode === "marker") {
+    const stylus = e.pointerType === "pen" && devices[device][1];
+    const ballpointWidth = mode === "brush" && prefs.nib === "Pen" && prefs.usePressure && stylus
+      ? prefs.width : null;
     gesture = {
-      type: "ink",
+      type: "ink", stylus, ballpointWidth,
       prefs,
       previewStart: 0,
-      prefix: new Path2D(),
+      prefix: {body: new Path2D(), core: ballpointWidth ? new Path2D() : null},
       marker: mode === "marker",
       id: uid(),
       raw: [],
@@ -2463,16 +2461,21 @@ function toolOptions(anchor, id) {
         ctx.fillRect(0, 0, sample.width, sample.height);
         ctx.fillStyle = rgb(inks[s.ink]);
         const points = [];
-        for (let i = 0; i <= 70; i++) {
-          const t = i / 70;
-          const force = 0.1 + 0.9 * Math.sin(Math.PI * t);
-          const y = 13.5 + 5 * Math.sin(t * Math.PI * 3) + 0.5 * Math.sin(t * 41);
-          points.push({ position: [6 + t * 228, y],
-            radius: s.width * 0.5 * (devices[device][1] ? pressureResponse(s, force) : 1) });
+        const stylus = devices[device][1];
+        for (let i = 0; i <= 100; i++) {
+          const t = i / 100;
+          const force = 0.04 + 0.94 * Math.sin(Math.PI * t) ** 2;
+          const position = [6 + t * 228, 13.5 - 7 * Math.sin(t * Math.PI * 3)];
+          const last = points.at(-1);
+          const radius = sampledRadius(s, stylus ? force : null, last?.radius,
+            last ? dist(last.position, position) : 0, 0.008 + force * 0.018, i === 100, stylus);
+          points.push({position, radius});
         }
+        const sampleInk = makeInk(smooth(points, s.smoothing), inks[s.ink]);
+        if (stylus && s.usePressure && s.nib === "Pen") sampleInk.ballpointWidth = s.width;
         ctx.save();
         ctx.scale(2, 2);
-        ctx.fill(new Path2D(inkPath(makeInk(smooth(points, s.smoothing), inks[s.ink]))));
+        paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink]);
         ctx.restore();
       }
       redrawSample = showSample;
@@ -2482,9 +2485,10 @@ function toolOptions(anchor, id) {
         setting("nib", v);
         toolOptions(anchor, id);
       });
-      const supported = devices[device][1] && p.nib !== "Fineliner";
+      const speedBrush = !devices[device][1] && p.nib === "Brush";
+      const supported = speedBrush || (devices[device][1] && p.nib !== "Fineliner");
       const toggle = checkOption(
-        "Use pen pressure",
+        speedBrush ? "Use stroke speed" : "Use pen pressure",
         supported && p.usePressure,
         (v) => {
           setting("usePressure", v);
@@ -2523,7 +2527,7 @@ function toolOptions(anchor, id) {
       );
     }
     if (id === "shapes") {
-      choices("Shape", ["Line", "Arrow", "Box", "Oval"], p.shape, (x) =>
+      choices("Shape", ["Line", "Arrow", "Box", "Oval", "X–Y axes"], p.shape, (x) =>
         setting("shape", x),
       );
       checkOption("Constrain angles and proportions", p.constrain, (v) =>
@@ -3260,7 +3264,7 @@ const iconModes = {
   brush: { Pen: "pen", Brush: "brush", Fineliner: "fineliner" },
   selector: { Tap: "tap", Rectangle: "box-select", Lasso: "lasso" },
   eraser: { Regular: "regular", Stroke: "stroke", Rectangle: "region-erase", Lasso: "lasso-erase" },
-  shapes: { Line: "line", Arrow: "arrow", Box: "box", Oval: "oval" },
+  shapes: { Line: "line", Arrow: "arrow", Box: "box", Oval: "oval", "X–Y axes": "axes" },
   text: { Auto: "text", Left: "left", Center: "center", Right: "right", Code: "code" },
   table: { "With header": "table-header", "Plain": "table" },
 };

@@ -157,6 +157,22 @@ import WebKit
       let radii = draw([0.1, 0.3, 0.6, 0.9])
       expect(!radii.isEmpty, "tablet event commits a visible stroke")
       spans.append(radii.max()! - radii.min()!)
+      let object = canvas.notebook.objects.last!
+      expect(object.ballpointWidth == (tip == .pen ? 3 : nil), "only pressure ballpoint has layered ink")
+      if tip == .pen, case .ink(let points, _) = object.content {
+        let renderer = PaperRenderer()
+        func coverage(_ point: InkPoint) -> CGFloat {
+          let path = renderer.footprint([point], ballpointWidth: 3)
+          return path.core!.boundingBoxOfPath.width / path.body.boundingBoxOfPath.width
+        }
+        expect(coverage(points.last!) > coverage(points.first!) + 0.55,
+               "firm ballpoint contact fills more of the ink track")
+        let resized = object.transformed(from: .zero, scale: 2, offset: .zero)
+        expect(resized.ballpointWidth == 6, "resizing preserves ballpoint shading")
+        let pieces = cutInk(object) { $0.position.x > 43 }
+        expect(!pieces.isEmpty && pieces.allSatisfy { $0.ballpointWidth == 3 },
+               "trimmed ballpoint fragments retain ink density")
+      }
     }
     expect(
       spans[0] > 0.2 && spans[1] > 3 * spans[0] && spans[2] < 0.0001,
@@ -164,6 +180,11 @@ import WebKit
     expect(!response.isEnabled && !toggle.isEnabled, "Fineliner keeps a fixed tip")
     pick(.brush)
     set(width, 4)
+    let brush = preferences.writingStyle
+    expect(brush.sampledRadius(force: nil, previous: 3, distance: 6, elapsed: 0.01,
+                               lift: true, stylus: true) < 1 &&
+           brush.sampledRadius(force: nil, previous: 3, distance: 0, elapsed: 0.01,
+                               lift: true, stylus: true) == 3, "a moving lift tapers and a brush dot survives")
     set(response, 0.5)
     let soft = draw([0.3])[0]
     set(response, 2)
@@ -652,6 +673,17 @@ import WebKit
       preferences.shape = shape
       stroke([(68, 92), (112, 118)])
       expect(canvas.notebook.objects.last?.instrument == "shape", "draw " + shape.rawValue)
+      if shape == .axes {
+        let color = InkColor.colors[0].1
+        let a = CGPoint(x: 10, y: 15), b = CGPoint(x: 130, y: 95)
+        let graph = shapeInk(a, b, shape: .axes, constrained: false, width: 1, color: color)!
+        let reverse = shapeInk(b, a, shape: .axes, constrained: false, width: 1, color: color)!
+        expect(graph.content == reverse.content, "axes always point right and up")
+        expect(graph.contains(CGPoint(x: 70, y: 55), tolerance: 1) &&
+               graph.contains(CGPoint(x: 70 + paperGrid, y: 57), tolerance: 0.5) &&
+               !graph.contains(CGPoint(x: 88, y: 73), tolerance: 1),
+               "axes cross at center with ticks and empty quadrants")
+      }
     }
     canvas.chooseTool(.table)
     stroke([(80, 161), (325, 242)])

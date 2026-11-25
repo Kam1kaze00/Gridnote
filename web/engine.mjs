@@ -202,7 +202,19 @@ const pair = (p) => p.map(fmt).join(" ");
 const outlines = new WeakMap();
 export function inkPath(o) {
   if (outlines.has(o)) return outlines.get(o);
-  const pts = o.content.ink._0;
+  const path = outlinePoints(o.content.ink._0);
+  outlines.set(o, path);
+  return path;
+}
+export function ballpointCorePath(o) {
+  const width = o.ballpointWidth;
+  if (!Number.isFinite(width) || width <= 0) return null;
+  return outlinePoints(o.content.ink._0.map(({position, radius}) => {
+    const coverage = clamp((2 * radius / width - 0.74) / 0.36, 0, 1);
+    return {position, radius: radius * (0.16 + 0.84 * coverage)};
+  }));
+}
+function outlinePoints(pts) {
   let path = "";
   const circle = ({ position: [x, y], radius: r }) =>
     "M" +
@@ -267,7 +279,6 @@ export function inkPath(o) {
     }
     span(start, pts.length - 1);
   }
-  outlines.set(o, path);
   return path;
 }
 export function touchesInk(o, a, b, r) {
@@ -337,6 +348,7 @@ export function transform(o, anchor, scale, dx, dy) {
   if (kind(o) === "ink")
     return {
       ...o,
+      ...(o.ballpointWidth ? {ballpointWidth: o.ballpointWidth * scale} : {}),
       ...makeInk(
         o.content.ink._0.map((p) => ({
           position: apply(p.position),
