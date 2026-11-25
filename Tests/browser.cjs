@@ -55,11 +55,21 @@ async function main() {
       const fresh = await browser.newContext();
       try {
         const firstVisit = await fresh.newPage();
+        firstVisit.setDefaultTimeout(30000);
+        async function waitStatus(pattern) {
+          try {
+            await firstVisit.waitForFunction(source =>
+              new RegExp(source).test(document.querySelector("#offline-status")?.textContent), pattern);
+          } catch (error) {
+            const status = await firstVisit.locator("#offline-status").textContent();
+            throw Error("Offline setup expected " + pattern + ", saw " + status, { cause: error });
+          }
+        }
         await firstVisit.goto(interrupted.url);
-        await firstVisit.waitForFunction(() => document.querySelector("#offline-status")?.textContent.includes("interrupted"));
+        await waitStatus("Reopen online to retry");
         interrupt = false;
         await firstVisit.reload();
-        await firstVisit.waitForFunction(() => document.querySelector("#offline-status")?.textContent === "Ready offline");
+        await waitStatus("Ready offline");
       } finally {
         await fresh.close();
         interrupted.close();
