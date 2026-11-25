@@ -27,8 +27,8 @@
   text-align: left;
 }
 .start-cover {
-  height: clamp(76px, 15vh, 124px);
-  background: #dfc9a8 url("./assets/launcher.jpg") center/cover;
+  aspect-ratio: 3.65;
+  background: #eeece9 url("./assets/launcher.jpg") center/cover;
 }
 .start-content {
   padding: clamp(18px, 4vw, 30px);

@@ -1,4 +1,4 @@
-![Gridnote wordmark on university graph paper beside a pen tablet](web/assets/launcher.jpg)
+![Gridnote, hand-lettered beside a black-and-white cartoon pencil and a graph-paper notebook](web/assets/launcher.jpg)
 
 # Gridnote
 
@@ -26,7 +26,7 @@ Desktop downloads are community builds. The Mac app has an ad hoc signature and 
 
 Gridnote opens to a launcher. Pick a **Major** and preview its six tools, or leave **None** for a regular notebook. **Continue notebook** restores your last notebook, scroll position and zoom. **New notebook** starts a blank page. **Open file** opens a notebook or a PDF. You can switch majors later through **File → Notebook Launcher** on Mac or **Notebook menu → Notebook launcher** on the web.
 
-![Startup screen with a major selected, its six study tools and the option to continue a notebook](docs/images/launcher.png)
+![Gridnote’s cartoon launcher showing a Computer Science toolkit and the option to continue a notebook](docs/images/launcher.png)
 
 Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 

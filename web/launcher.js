@@ -1,7 +1,7 @@
 (function (global) {
   function mount(host, options) {
     host.innerHTML = `<section class="start-card" aria-labelledby="start-title">
-      <div class="start-cover" role="img" aria-label="Gridnote on an engineering notebook"></div>
+      <div class="start-cover" role="img" aria-label="Gridnote, illustrated with a cartoon pencil and a graph-paper notebook"></div>
       <div class="start-content"><h1 id="start-title">Open your notebook</h1>
         <label class="start-label" for="welcome-major">Major</label>
         <select id="welcome-major" aria-label="Major"></select>
