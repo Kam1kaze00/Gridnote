@@ -310,6 +310,7 @@ func removePageWriting(from objects: [NoteObject], page: Int) -> [NoteObject] {
   return objects.flatMap { object -> [NoteObject] in
     guard object.frame.intersects(slice), object.instrument != "shape" else { return [object] }
     if object.table != nil || object.codeStyle != nil { return [object] }
+    if case .ink = object.content, object.frame.minY >= top, object.frame.maxY <= bottom { return [] }
     switch object.content {
     case .image: return [object]
     case .text:

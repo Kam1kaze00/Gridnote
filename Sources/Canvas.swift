@@ -1147,22 +1147,22 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     didEdit?()
   }
 
-  func clearAllWriting(typedOnly: Bool, page: Int? = nil) {
+  enum WritingKind { case handwriting, typedText }
+
+  func clearWriting(_ kind: WritingKind, on page: Int? = nil) {
     finishText()
     finishGesture()
     let remaining = notebook.objects.flatMap { object -> [NoteObject] in
-      guard object.table == nil, object.codeStyle == nil, object.instrument != "shape" else {
-        return [object]
-      }
-      switch object.content {
-      case .image: return [object]
-      case .ink where typedOnly: return [object]
-      default: return page.map { removePageWriting(from: [object], page: $0) } ?? []
+      switch (kind, object.content) {
+      case (.handwriting, .ink) where object.instrument == nil,
+           (.typedText, .text) where object.table == nil && object.codeStyle == nil:
+        return page.map { removePageWriting(from: [object], page: $0) } ?? []
+      default: return [object]
       }
     }
-    didChange(
-      from: notebook.objects, to: remaining,
-      name: typedOnly ? "Remove Typed Text" : "Clear All Writing")
+    guard remaining != notebook.objects else { return }
+    didChange(from: notebook.objects, to: remaining,
+      name: kind == .typedText ? "Remove Typed Text" : "Clear Writing")
     setSelection([])
   }
 
@@ -1191,15 +1191,6 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     setSelection([])
     needsDisplay = true
     didEdit?()
-  }
-
-  func clearWriting(page: Int) {
-    finishText()
-    finishGesture()
-    didChange(
-      from: notebook.objects, to: removePageWriting(from: notebook.objects, page: page),
-      name: "Clear Writing on This Page")
-    setSelection([])
   }
 
   var selectionCount: Int { selection.count }

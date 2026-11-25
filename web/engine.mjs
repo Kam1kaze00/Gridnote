@@ -411,14 +411,16 @@ export function cleared(objects, page, deleting = false) {
         });
       return out;
     }
+    if (o.frame[0][1] >= top && o.frame[0][1] + o.frame[1][1] <= bottom) return [];
     const data = o.content.ink,
       runs = [];
-    let run = [];
+    let run = [], removed = false;
     const add = (p) => {
       if (
         p.position[1] + p.radius >= top &&
         p.position[1] - p.radius < bottom
       ) {
+        removed = true;
         if (run.length) runs.push(run);
         run = [];
       } else run.push(p);
@@ -439,6 +441,7 @@ export function cleared(objects, page, deleting = false) {
       }
     });
     if (run.length) runs.push(run);
+    if (!removed) return [o];
     return runs.map((r, i) => ({
       ...o,
       ...makeInk(r, data._1, i ? uid() : o.id),

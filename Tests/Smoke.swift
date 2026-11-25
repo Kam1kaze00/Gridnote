@@ -455,10 +455,13 @@ import WebKit
       canvas.notebook.objects.count == 3, "eraser rectangle removes whole intersecting strokes")
     owner.undoEdit(nil)
     preferences.eraseMode = .stroke
+    let pageContents = canvas.notebook.objects
     owner.clearPage(nil)
-    expect(
-      canvas.notebook.objects.count == 1 && canvas.notebook.objects[0].id == imageID,
-      "page cleanup keeps pasted images")
+    expect(canvas.notebook.objects == pageContents.filter {
+      if case .ink = $0.content { return $0.instrument != nil }
+      return true
+    } && canvas.notebook.objects.contains(where: { $0.id == imageID }),
+      "page cleanup keeps typed notes and pasted images")
     owner.undoEdit(nil)
     expect(canvas.notebook.objects.count == 5, "page cleanup is undoable")
     owner.brushTool(nil)
@@ -709,23 +712,43 @@ import WebKit
     let text2 = text1.transformed(from: .zero, offset: CGPoint(x: 0, y: paperSize.height))
     var later = text2
     later.id = UUID()
-    canvas.notebook.objects += [text1, later]
+    let writer = NoteObject.ink([.init(position: CGPoint(x: 100, y: 100), radius: 1)],
+      color: InkColor.colors[0].1)!
+    var nextPageWriter = writer.transformed(from: .zero, offset: CGPoint(x: 0, y: paperSize.height))
+    nextPageWriter.id = UUID()
+    let boundary = paperSize.height
+    let crossing = NoteObject.ink([.init(position: CGPoint(x: 80, y: boundary - 12), radius: 1),
+      .init(position: CGPoint(x: 80, y: boundary + 30), radius: 1)], color: InkColor.colors[0].1)!
+    canvas.notebook.objects += [text1, later, writer, nextPageWriter, crossing]
     owner.jumpToPage(0)
     let originals = canvas.notebook.objects
-    let clearButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Clear Text" }
-    expect(clearButton != nil, "current-page Clear Text button is visible")
+    let clearButton = visibleViews(ChromeButton.self, in: screen).first { $0.caption == "Clear Writing" }
+    expect(clearButton != nil, "current-page Clear Writing button is visible")
     clearButton?.performClick(nil)
-    expect(
-      !canvas.notebook.objects.contains(text1) && canvas.notebook.objects.contains(later),
-      "page text removal is limited to the requested page")
     let clearedObjects = canvas.notebook.objects
+    let kept = originals.filter { object in
+      if case .ink = object.content { return object.instrument != nil || object.frame.minY >= boundary }
+      return true
+    }
+    expect(kept.allSatisfy(clearedObjects.contains) && !clearedObjects.contains(writer),
+      "Clear Writing preserves typed text, highlighter, objects and the next page")
+    expect(clearedObjects.contains(where: { $0.id == crossing.id && $0.frame.minY >= boundary - 1 }),
+      "a stroke crossing the break retains its next-page portion")
     clearButton?.performClick(nil)
     owner.undoEdit(nil)
-    expect(canvas.notebook.objects == originals, "one Undo restores cleared text after two clicks")
+    expect(canvas.notebook.objects == originals, "one Undo restores exact strokes after two clicks")
     owner.redoEdit(nil)
-    expect(canvas.notebook.objects == clearedObjects, "Redo reapplies current-page text removal")
+    expect(canvas.notebook.objects == clearedObjects, "Redo reapplies current-page handwriting removal")
     owner.undoEdit(nil)
-    canvas.clearAllWriting(typedOnly: true)
+    owner.clearAll(nil)
+    expect(!canvas.notebook.objects.contains(nextPageWriter) && canvas.notebook.objects.contains(later),
+      "all-page writing removal also keeps typed text")
+    owner.undoEdit(nil)
+    owner.clearPageText(nil)
+    expect(!canvas.notebook.objects.contains(text1) && canvas.notebook.objects.contains(later)
+      && canvas.notebook.objects.contains(writer), "separate current-page typed-text removal")
+    owner.undoEdit(nil)
+    canvas.clearWriting(.typedText)
     expect(
       !canvas.notebook.objects.contains(text1) && !canvas.notebook.objects.contains(later)
         && canvas.notebook.objects.contains(where: { $0.codeStyle != nil })

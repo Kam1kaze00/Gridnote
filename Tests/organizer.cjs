@@ -39,18 +39,38 @@ const { webkit } = require("playwright"),
     n = await saved();
     assert.deepEqual(n.sourcePageMap, [-1, 0, 1]);
     assert(n.objects[0].frame[0][1] > 841);
-    const beforeClear = n;
-    const clear = p.getByRole("button", { name: "Clear typed text on this page", exact: true });
+    const boundary = await p.evaluate(async () => {
+      const { H, inks, makeInk, cleared } = await import("./engine.mjs");
+      const stroke = makeInk([H - 10, H + 20].map(y => ({ position: [50, y], radius: 1 })), inks[0]);
+      const [fragment] = cleared([stroke], 0);
+      return fragment.id === stroke.id && fragment.content.ink._0.every(pt => pt.position[1] - pt.radius >= H)
+        && cleared([fragment], 0)[0] === fragment;
+    });
+    assert(boundary, "clearing the page retains the next-page part of a crossing stroke");
+    const bounds = await p.locator("#sheet").boundingBox();
+    for (const [tool, y] of [["brush", 210], ["marker", 240]]) {
+      await p.click("#tool-" + tool);
+      await p.keyboard.press("Escape");
+      await p.mouse.move(bounds.x + 75, bounds.y + y);
+      await p.mouse.down();
+      await p.mouse.move(bounds.x + 155, bounds.y + y, { steps: 4 });
+      await p.mouse.up();
+    }
+    const beforeClear = await saved();
+    assert.equal(beforeClear.objects.length, 3);
+    const keep = beforeClear.objects.filter(o => !o.content.ink || o.instrument != null);
+    assert.equal(keep.length, 2);
+    const clear = p.getByRole("button", { name: "Clear writing on this page", exact: true });
     await clear.click();
     n = await saved();
-    assert.equal(n.objects.length, 0);
+    assert.deepEqual(n.objects, keep);
     assert.deepEqual(n.sourcePageMap, beforeClear.sourcePageMap);
-    assert.equal(n.sourcePDF, beforeClear.sourcePDF);
+    assert.deepEqual(n.sourcePDF, beforeClear.sourcePDF);
     await clear.click();
     await p.click("#undo");
     assert.deepEqual((await saved()).objects, beforeClear.objects);
     await p.click("#redo");
-    assert.equal((await saved()).objects.length, 0);
+    assert.deepEqual((await saved()).objects, keep);
     await p.click("#undo");
     await p.getByRole("button", { name: "Delete selected page" }).click();
     assert.equal((await saved()).objects.length, 0);

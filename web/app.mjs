@@ -2881,19 +2881,14 @@ async function fileMenu() {
       pop.append($el("hr"));
       menuAction("Undo", () => stepHistory(undo, redo), undo.length > 0);
       menuAction("Redo", () => stepHistory(redo, undo), redo.length > 0);
-      menuAction("Clear writing on this page", () => {
-        finishText();
-        setObjects(cleared(book.objects, currentPage()), "Clear writing");
-        selection.clear();
-        refresh();
-      });
+      menuAction("Clear writing on this page", () => clearWriting("handwriting", currentPage()));
       menuAction("Remove typed text…", () =>
         openPop($("files"), "clear", "Remove typed text", () => {
-          menuAction("This page", () => clearNotebook(true, currentPage()));
-          menuAction("All pages", () => clearNotebook(true));
+          menuAction("This page", () => clearWriting("typedText", currentPage()));
+          menuAction("All pages", () => clearWriting("typedText"));
         }),
       );
-      menuAction("Clear writing on all pages", () => clearNotebook(false));
+      menuAction("Clear writing on all pages", () => clearWriting("handwriting"));
       menuAction(
         "Delete this page",
         () => {
@@ -3234,22 +3229,18 @@ document.addEventListener(
   },
   true,
 );
-function clearNotebook(typedOnly, page = null) {
+function clearWriting(kindToRemove, page = null) {
   finishText();
   finishGesture();
   const next = book.objects.flatMap((o) => {
-    if (
-      o.table ||
-      o.codeStyle != null ||
-      o.instrument === "shape" ||
-      kind(o) === "image" ||
-      (typedOnly && kind(o) === "ink")
-    )
-      return [o];
+    const matches = kindToRemove === "handwriting"
+      ? kind(o) === "ink" && o.instrument == null
+      : kind(o) === "text" && !o.table && o.codeStyle == null;
+    if (!matches) return [o];
     return page == null ? [] : cleared([o], page);
   });
   if (next.length === book.objects.length && next.every((o, i) => o === book.objects[i])) return;
-  setObjects(next, typedOnly ? "Remove typed text" : "Clear writing");
+  setObjects(next, kindToRemove === "typedText" ? "Remove typed text" : "Clear writing");
   selection.clear();
   refresh();
 }
@@ -3355,9 +3346,9 @@ $("imagefile").onchange = () =>
   });
 $("addimage").onclick = () => imageMenu();
 $("undo").onmousedown = $("redo").onmousedown = (e) => e.preventDefault();
-$("clear-page-text").onclick = () => {
+$("clear-page-writing").onclick = () => {
   closePop();
-  clearNotebook(true, currentPage());
+  clearWriting("handwriting", currentPage());
 };
 $("undo").onclick = () => {
   if (editing) {
