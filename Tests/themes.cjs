@@ -15,6 +15,24 @@ async function main() {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(process.env.GRIDNOTE_URL);
+    const launcherTheme = page.getByLabel("Theme", { exact: true });
+    assert.equal(await launcherTheme.inputValue(), "Default");
+    await launcherTheme.selectOption("70s Cartoon");
+    assert(
+      (
+        await page
+          .locator(".start-cover")
+          .evaluate((el) => getComputedStyle(el).backgroundImage)
+      ).includes("/launcher.jpg"),
+    );
+    await launcherTheme.selectOption("Default");
+    assert(
+      (
+        await page
+          .locator(".start-cover")
+          .evaluate((el) => getComputedStyle(el).backgroundImage)
+      ).includes("/default-launcher.jpg"),
+    );
     await page.click("#new");
     await page.waitForSelector("#sheet");
     assert.match(
@@ -41,7 +59,10 @@ async function main() {
     const stationery = page.getByLabel("70s Cartoon paper");
     assert.equal(await stationery.isChecked(), false);
     await stationery.check();
-    await page.locator("#popover").getByRole("button", {name:"Ivory", exact:true}).click();
+    await page
+      .locator("#popover")
+      .getByRole("button", { name: "Ivory", exact: true })
+      .click();
     assert(await page.getByLabel("70s Cartoon paper").isChecked());
     await page.keyboard.press("Escape");
     await page.waitForFunction(
@@ -49,6 +70,7 @@ async function main() {
     );
     await page.reload();
     await page.waitForSelector("#continue");
+    assert.equal(await launcherTheme.inputValue(), "70s Cartoon");
     assert(
       await page
         .locator("body")

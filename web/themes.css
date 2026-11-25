@@ -372,3 +372,15 @@ body.refined #files {
     padding: 4px 6px;
   }
 }
+
+.seventies .start-cover {
+  height: auto;
+  aspect-ratio: 3.65;
+  background-image: url("./assets/launcher.jpg");
+}
+.seventies .start-actions #new {
+  --action-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='m4 3 14-1 1 19-15 1zM2 6h4M2 11h4M2 16h4M8 8h7m-7 4h5'/%3E%3C/svg%3E");
+}
+.seventies .start-actions #open {
+  --action-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M2 18 1 5l8-1 3 3h8l1 4M3 21l3-10 17-1-4 10zM7 17l2-4'/%3E%3C/svg%3E");
+}

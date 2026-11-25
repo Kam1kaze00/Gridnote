@@ -2159,6 +2159,7 @@ async function showStartScreen() {
   lastNotebookID = book.id;
   closePop();
   launcher.selectMajor(major());
+  launcher.selectTheme(theme());
   launcher.recent(title, true);
   $("welcome").hidden = false;
   document.body.classList.add("launching");
@@ -2801,7 +2802,7 @@ $("pdfnext").onclick = () => {
 };
 applyTheme();
 const launcher = GridnoteLauncher.mount($("welcome"), {
-  major: major(), device: mobileSurface ? "" : deviceLabel(),
+  major: major(), theme: theme(), changeTheme: value => { chooseTheme(value); applyTheme(); }, device: mobileSurface ? "" : deviceLabel(),
   start: action => run(() => enterFromLauncher(action)),
   change: value => chooseMajor(value),
 });

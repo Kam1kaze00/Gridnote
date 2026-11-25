@@ -62,10 +62,15 @@ import WebKit
       launchWeb.evaluateJavaScript("(() => { const select = document.querySelector('#welcome-major'); if (select) { select.value = 'Physics'; select.dispatchEvent(new Event('change')); } })()")
     }
     expect(preferences.major == "Physics" && launchAction.isEmpty, "startup major selection persists before a notebook is opened")
+    launchWeb.evaluateJavaScript("(() => {const s = document.querySelector('#welcome-theme'); s.value='70s Cartoon'; s.dispatchEvent(new Event('change'));})()")
+    for _ in 0..<100 where !preferences.cartoonTheme { pump(0.06) }
+    expect(preferences.cartoonTheme, "Mac launcher applies the selected artwork and persists its theme")
     launchWeb.evaluateJavaScript("document.querySelector('#continue').click()")
     for _ in 0..<100 where launchAction.isEmpty { pump(0.06) }
     expect(launchAction == "continue", "standalone Mac launcher continues only on request")
     launchController.dismiss()
+    preferences.cartoonTheme = false
+    ChromeTheme.cartoon = false
     preferences.major = "None"
     win.setFrame(CGRect(x: 60, y: 40, width: 1024, height: 700), display: true)
     NSApp.activate(ignoringOtherApps: true)

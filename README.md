@@ -26,7 +26,7 @@ Desktop downloads are community builds. The Mac app has an ad hoc signature and 
 
 Gridnote opens to a launcher. Pick a **Major** and preview its six tools, or leave **None** for a regular notebook. **Continue notebook** restores your last notebook, scroll position and zoom. **New notebook** starts a blank page. **Open file** opens a notebook or a PDF. You can switch majors later through **File → Notebook Launcher** on Mac or **Notebook menu → Notebook launcher** on the web.
 
-![Gridnote’s cartoon launcher showing a Computer Science toolkit and the option to continue a notebook](docs/images/launcher.png)
+![Gridnote’s launcher showing the theme choice and a Computer Science toolkit and the option to continue a notebook](docs/images/launcher.png)
 
 Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1kaze00/Gridnote/main/docs/examples/Series%20circuit.gridnote) or view its [finished PDF](docs/examples/Series%20circuit.pdf).
 
@@ -43,7 +43,7 @@ Download the [editable circuit exercise](https://raw.githubusercontent.com/Kam1k
 
 ## Appearance
 
-Open **Options → Theme** to choose **Default** or **70s Cartoon**. Default uses a compact pen nib. The cartoon theme pairs illustrated tools with a cream launcher and the transparent pencil mascot. Its optional stationery includes a double margin and a numbered corner. Choose it under **Paper** for a page or notebook. Those markings appear in the exported PDF.
+Choose **Theme** on the launcher or in **Options** while writing. First launch uses **Default**. Switching to **70s Cartoon** changes the artwork and controls immediately. Default uses a compact pen nib. The cartoon theme pairs illustrated tools with a cream launcher and the transparent pencil mascot. Its optional stationery includes a double margin and a numbered corner. Choose it under **Paper** for a page or notebook. Those markings appear in the exported PDF.
 
 ![70s Cartoon notebook showing illustrated tools, a numbered page and a worked circuit exercise](docs/images/cartoon-notebook.png)
 

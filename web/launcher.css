@@ -27,8 +27,8 @@
   text-align: left;
 }
 .start-cover {
-  aspect-ratio: 3.65;
-  background: #eeece9 url("./assets/launcher.jpg") center/cover;
+  height: clamp(80px, 16vh, 120px);
+  background: #eeece9 url("./assets/default-launcher.jpg") center/cover;
 }
 .start-content {
   padding: clamp(18px, 4vw, 30px);
@@ -146,5 +146,42 @@
   .start-actions #new,
   .start-actions #open {
     flex: 1;
+  }
+}
+
+.start-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.start-fields select {
+  display: block;
+  margin-top: 5px;
+}
+.start-fields .start-label {
+  margin: 0;
+}
+.start-actions #new::before,
+.start-actions #open::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  margin-right: 6px;
+  background: currentColor;
+  mask: var(--action-icon) center / contain no-repeat;
+  -webkit-mask: var(--action-icon) center / contain no-repeat;
+}
+.start-actions #new {
+  --action-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Cpath d='M5 3h10l4 4v14H5zM14 3v5h5M8 14h8m-4-4v8'/%3E%3C/svg%3E");
+}
+.start-actions #open {
+  --action-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Cpath d='M2 18V5h7l3 3h9v3M3 20l3-9h16l-3 9z'/%3E%3C/svg%3E");
+}
+@media (max-width: 380px) {
+  .start-fields {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }

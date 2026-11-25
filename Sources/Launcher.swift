@@ -86,6 +86,11 @@ final class LauncherController: NSWindowController, WKScriptMessageHandler {
     guard message.frameInfo.isMainFrame, message.frameInfo.request.url?.isFileURL == true,
       let values = message.body as? [String: String], let action = values["action"] else { return }
     switch action {
+    case "theme":
+      guard let theme = values["theme"], ["Default", "70s Cartoon"].contains(theme) else { return }
+      prefs.cartoonTheme = theme == "70s Cartoon"
+      ChromeTheme.cartoon = prefs.cartoonTheme
+      window?.appearance = ChromeTheme.appearance
     case "major": if let major = values["major"] { prefs.major = major }
     case "open": openDocument(nil)
     case "continue", "new": start(action, nil)
