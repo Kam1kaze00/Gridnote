@@ -38,6 +38,8 @@ with tempfile.TemporaryDirectory() as scratch:
             elif env.get("ENGINE", "chromium") == "chromium":
                 tests.append("mobile.cjs")
             for test in tests:
-                subprocess.run(["node", str(root / "Tests" / test)], cwd=root, env=env, check=True)
+                print(f"Testing {test}", flush=True)
+                subprocess.run(["node", str(root / "Tests" / test)], cwd=root, env=env,
+                               check=True, timeout=240)
         finally:
             app.terminate()

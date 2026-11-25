@@ -20,7 +20,11 @@ async function testOrigin(target, unavailable = () => false) {
         result.pipe(res);
       },
     );
+    // A failed precache can cancel the other downloads in its batch. Release
+    // their upstream sockets even when the browser has stopped reading.
+    res.once("close", () => up.destroy());
     up.on("error", () => {
+      if (res.destroyed || res.writableEnded) return;
       res.writeHead(502);
       res.end();
     });

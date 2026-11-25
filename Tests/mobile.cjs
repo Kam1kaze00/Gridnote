@@ -16,6 +16,7 @@ const { chromium } = require("playwright"),
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
+  page.setDefaultTimeout(30000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   // A deterministic rear-camera fixture exercises the complete camera, crop and placement UI.
@@ -36,6 +37,9 @@ const { chromium } = require("playwright"),
       cx.fillStyle = "black";
       cx.fillText("Engineering exercise", 60, 70);
       const stream = c.captureStream(5);
+      // Make the first video frame deterministic after the stream is attached.
+      const frames = setInterval(() => cx.fillRect(0, 0, 1, 1), 100);
+      window.stopCameraFrames = () => clearInterval(frames);
       window.testCamera = stream;
       return stream;
     };
@@ -104,6 +108,7 @@ const { chromium } = require("playwright"),
   });
   await page.mouse.up();
   await page.getByRole("button", { name: "Insert crop" }).tap();
+  await page.evaluate(() => window.stopCameraFrames());
   await wait();
   const result = await book(),
     image = result.objects.find((o) => o.content.image);
