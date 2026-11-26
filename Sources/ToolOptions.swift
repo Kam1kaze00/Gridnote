@@ -38,7 +38,7 @@ final class ToolOptionsController: NSViewController {
   private var brushFinishRow: NSView?
   private var flowRow: NSView?
   var didResize: ((CGSize) -> Void)?
-  private var tipButtons: [NSButton] = []
+  private var tipButtons: [ChromeButton] = []
   private var pressureSwitch: NSButton?
   private var preview: BrushSample?
   private var tableFields: [NSTextField] = []
@@ -89,11 +89,9 @@ final class ToolOptionsController: NSViewController {
       let tips = WritingTip.allCases
       let rows = [Array(tips.prefix(3)), Array(tips.suffix(3))].map { group in
         let buttons = group.map { tip in
-          let button = NSButton(title: tip.rawValue, target: self, action: #selector(nibChanged(_:)))
-          button.setButtonType(.toggle)
-          button.bezelStyle = .rounded
-          button.state = tip == preferences.nib ? .on : .off
-          button.setAccessibilityLabel(tip.rawValue)
+          let button = ChromeButton(tip.rawValue, style: .choice, target: self, action: #selector(nibChanged(_:)))
+          button.controlHeight = 26
+          button.selected = tip == preferences.nib
           tipButtons.append(button)
           return button
         }
@@ -105,6 +103,7 @@ final class ToolOptionsController: NSViewController {
       column.addArrangedSubview(chromeStack(rows, spacing: 2, horizontal: false))
       let finishControl = NSSegmentedControl(labels: BrushFinish.allCases.map { $0.rawValue },
         trackingMode: .selectOne, target: self, action: #selector(brushFinishChanged(_:)))
+      finishControl.selectedSegmentBezelColor = appAccent
       finishControl.selectedSegment = BrushFinish.allCases.firstIndex(of: preferences.brushFinish) ?? 0
       finishControl.setAccessibilityLabel("Brush finish")
       let finishRow = chromeStack([chromeLabel("Finish", size: 12), finishControl], spacing: 8)
@@ -225,10 +224,10 @@ final class ToolOptionsController: NSViewController {
     canvas.refreshTool()
     didRestore?()
   }
-  @objc private func nibChanged(_ sender: NSButton) {
-    guard let tip = WritingTip(rawValue: sender.title) else { return }
+  @objc private func nibChanged(_ sender: ChromeButton) {
+    guard let tip = WritingTip(rawValue: sender.caption) else { return }
     preferences.nib = tip
-    for button in tipButtons { button.state = button === sender ? .on : .off }
+    for button in tipButtons { button.selected = button === sender }
     if let widthSlider { widthSlider.doubleValue = preferences.width; display(widthSlider.tag) }
     brushFinishRow?.isHidden = tip != .brush
     flowRow?.isHidden = preferences.nib != .pen
@@ -341,6 +340,7 @@ final class ToolOptionsController: NSViewController {
     let traits = NSSegmentedControl(
       labels: ["B", "I", "U"], trackingMode: .selectAny,
       target: self, action: #selector(formatTraits(_:)))
+    traits.selectedSegmentBezelColor = appAccent
     traits.setAccessibilityLabel("Text emphasis")
     for (i, label) in ["Bold", "Italic", "Underline"].enumerated() {
       traits.setToolTip(label, forSegment: i)
@@ -349,6 +349,7 @@ final class ToolOptionsController: NSViewController {
     let align = NSSegmentedControl(
       labels: TypeAlignment.allCases.map(\.rawValue),
       trackingMode: .selectOne, target: self, action: #selector(alignment(_:)))
+    align.selectedSegmentBezelColor = appAccent
     align.selectedSegment = TypeAlignment.allCases.firstIndex(of: f.alignment) ?? 0
     align.setAccessibilityLabel("Alignment")
     align.controlSize = .small
@@ -386,6 +387,7 @@ final class ToolOptionsController: NSViewController {
   private func segment(_ title: String, labels: [String], selected: Int, action: Selector) {
     let control = NSSegmentedControl(
       labels: labels, trackingMode: .selectOne, target: self, action: action)
+    control.selectedSegmentBezelColor = appAccent
     control.selectedSegment = selected
     control.segmentDistribution = labels.count > 4 ? .fillProportionally : .fillEqually
     control.widthAnchor.constraint(equalToConstant: 248).isActive = true

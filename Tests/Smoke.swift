@@ -101,22 +101,40 @@ import WebKit
     preferences.recognizeTabletPoint()
     let toolbar = visibleViews(ChromeButton.self, in: owner.window!.contentView!)
     let writer = toolbar.first { $0.shortcut == "Q" }!
+    let toolButtons = toolbar.filter { $0.style == .choice }
+    for tool in NoteTool.allCases {
+      canvas.chooseTool(tool)
+      let pressed = toolButtons.filter { $0.selected && $0.state == .on }
+      expect(pressed.count == 1 && pressed[0].accessibilityLabel() == tool.title,
+        "the toolbar marks only " + tool.title + " as active")
+    }
+    canvas.chooseTool(.brush)
     expect(writer.caption == "Writer", "Q toolbar button is named Writer")
     writer.performClick(nil)
     let popover = owner.settingsPopover!
     let panel = popover.contentViewController!.view
-    let tips = visibleViews(NSButton.self, in: panel).filter { WritingTip(rawValue: $0.title) != nil }
+    let tips = visibleViews(ChromeButton.self, in: panel).filter { WritingTip(rawValue: $0.caption) != nil }
     let sliders = visibleViews(NSSlider.self, in: panel)
     let width = sliders.first { $0.accessibilityLabel() == "Width" }!
     let response = sliders.first { $0.accessibilityLabel() == "Pressure response" }!
     let toggle = visibleViews(NSButton.self, in: panel).first { $0.title == "Use pen pressure" }!
     expect(
-      Set(tips.map(\.title)) == Set(["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]),
+      Set(tips.map(\.caption)) == Set(["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]),
       "Writer offers its six tips in one panel")
     func pick(_ tip: WritingTip) {
-      tips.first { $0.title == tip.rawValue }!.performClick(nil)
+      let picked = tips.first { $0.caption == tip.rawValue }!
+      picked.performClick(nil)
+      let selectionMatches = tips.allSatisfy { button in
+        let bounds = button.bounds
+        let bitmap = button.bitmapImageRepForCachingDisplay(in: bounds)!
+        button.cacheDisplay(in: bounds, to: bitmap)
+        let color = bitmap.colorAt(x: bitmap.pixelsWide/12, y: bitmap.pixelsHigh/2)!.usingColorSpace(.sRGB)!
+        let accented = color.greenComponent - color.redComponent > 0.25
+        return accented == (button === picked) && (button.state == .on) == accented
+      }
+      expect(selectionMatches, "only " + tip.rawValue + " has the selected fill and pressed state")
       expect(
-        preferences.nib == tip && writer.caption == "Writer",
+        preferences.nib == tip && writer.caption == "Writer" && writer.accessibilityLabel() == "Writer" && writer.toolTip == "Writer (Q)",
         "switch to " + tip.rawValue + " keeps the Writer name")
     }
     func set(_ slider: NSSlider, _ value: Double) {
