@@ -1,3 +1,4 @@
+const waitForStoredValue = require("./wait-for-storage.cjs");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { chromium, firefox, webkit } = require("playwright");
@@ -15,7 +16,7 @@ async function editHistory(page) {
   await page.locator("#popover").getByRole("button", { name: "Undo", exact: true }).click();
   assert(await page.locator("#redo").isEnabled(), "Undoing the open text edit must leave it available for Redo");
   await page.click("#redo");
-  await page.waitForFunction(async () => {
+  await waitForStoredValue(page, async () => {
     const s = await import("./store.mjs");
     const record = await s.loadRecord(await s.loadState("last"));
     return record?.book.objects.some(o => o.content.text?._0 === "Second observation");
@@ -55,9 +56,9 @@ async function editDuringPDFOpen(page) {
     await page.locator("#popover").getByRole("button", { name, exact: true }).click();
   };
   await page.setInputFiles("#file", path.join(__dirname, "fixtures/exercise.pdf"));
-  await page.waitForFunction(async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "exercise");
+  await waitForStoredValue(page, async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "exercise");
   await pick("New notebook");
-  await page.waitForFunction(async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "Untitled Notebook");
+  await waitForStoredValue(page, async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "Untitled Notebook");
   const outgoing = await page.evaluate(async () => {
     // Hold one PDF-worker reply long enough to type in the notebook still on screen.
     const send = Worker.prototype.postMessage;
@@ -156,7 +157,7 @@ async function keyboardActions(page) {
   await page.locator("#editor").press("Control+p");
   await page.locator("#pdfmodal[open]").waitFor({ timeout: 4000 });
   await page.click("#pdfclose");
-  await page.waitForFunction(async () => {
+  await waitForStoredValue(page, async () => {
     const s = await import("./store.mjs");
     return (await s.loadRecord(await s.loadState("last")))?.book.objects.some(o => o.content.text?._0 === "Saved mid-sentence");
   });
@@ -215,11 +216,11 @@ async function imagesWhileSwitching(page) {
   await page.locator("#popover").getByRole("button", { name: "Rename notebook…" }).click();
   await page.getByRole("textbox", { name: "Notebook name" }).fill("Original diagrams");
   await page.getByRole("button", { name: "Save name" }).click();
-  const original = await (await page.waitForFunction(async () => {
+  const original = await waitForStoredValue(page, async () => {
     const s = await import("./store.mjs");
     const info = await s.lastNotebookInfo();
     return info?.title === "Original diagrams" && info.id;
-  })).jsonValue();
+  });
   // Delay the first of two images to force a notebook switch during decoding.
   await page.evaluate(async () => {
     const canvas = document.createElement("canvas");
@@ -241,7 +242,7 @@ async function imagesWhileSwitching(page) {
   await page.click("#files");
   await page.locator("#popover").getByRole("button", { name: "New notebook", exact: true }).click();
   await page.evaluate(() => window.continueImage());
-  await page.waitForFunction(async id => {
+  await waitForStoredValue(page, async id => {
     const s = await import("./store.mjs");
     const last = await s.loadState("last");
     return last && last !== id && (await s.loadRecord(last))?.title === "Untitled Notebook"
@@ -258,7 +259,7 @@ async function imagesWhileSwitching(page) {
 
 async function backupRecovery(page) {
   await page.click("#new");
-  await page.waitForFunction(async () => !!await (await import("./store.mjs")).lastNotebookInfo());
+  await waitForStoredValue(page, async () => !!await (await import("./store.mjs")).lastNotebookInfo());
   const id = await page.evaluate(async () => {
     const s = await import("./store.mjs");
     const id = await s.loadState("last");

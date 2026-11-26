@@ -1,3 +1,4 @@
+const waitForStoredValue = require("./wait-for-storage.cjs");
 const { chromium, webkit, firefox } = require("playwright");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -116,7 +117,7 @@ async function main() {
     assert(rejectedPaper, "damaged paper indexes are reported before replacing the current notebook");
     assert(!(await page.locator("#sheet").isVisible()));
     await page.click("#new");
-    await page.waitForFunction(async () => Boolean(await (await import("./store.mjs")).lastNotebookInfo()));
+    await waitForStoredValue(page, async () => Boolean(await (await import("./store.mjs")).lastNotebookInfo()));
     const lastSaved = await page.evaluate(async () => {
       const { loadState } = await import("./store.mjs");
       const transaction = IDBDatabase.prototype.transaction;
