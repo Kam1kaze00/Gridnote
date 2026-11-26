@@ -1,3 +1,4 @@
+import {inkLayers, graphitePattern, graphitePDFFill} from "./ink-materials.mjs";
 import { sourceIndex } from "./engine.mjs";
 import {
   H,
@@ -5,7 +6,7 @@ import {
   G,
   kind,
   inkPath,
-  ballpointCorePath,
+  materialCorePath,
   rgb,
   tints,
   paper,
@@ -138,17 +139,19 @@ export function paintPaper(ctx, page, design) {
 }
 export {textLines} from "./blocks.mjs";
 export function inkFootprint(o) {
-  const core = ballpointCorePath(o);
-  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null};
+  const core = materialCorePath(o);
+  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null, tip:o.inkNib?.tip};
 }
 export function paintFootprint(ctx, paths, color, flow = 1) {
   ctx.fillStyle = rgb(color);
   if (paths.core) {
     ctx.save();
     const original = ctx.globalAlpha;
-    ctx.globalAlpha = original * flow * 0.43;
+    const [body, detail] = inkLayers(paths.tip);
+    ctx.globalAlpha = original * flow * body;
     ctx.fill(paths.body);
-    ctx.globalAlpha = original * flow;
+    ctx.globalAlpha = original * flow * detail;
+    if (paths.tip === "Pencil") ctx.fillStyle = graphitePattern(ctx, rgb(color));
     ctx.fill(paths.core);
     ctx.restore();
   } else ctx.fill(paths.body);
@@ -209,7 +212,7 @@ export async function makePDF(book, source, progress) {
     doc = await lib.PDFDocument.create();
   doc.setCreator("Gridnote");
   doc.setProducer("Gridnote");
-  const pngs = new Map();
+  const pngs = new Map(), graphite = new Map();
   const total = pageCount(book);
   for (let i = 0; i < total; i++) {
     progress?.(i + 1, total);
@@ -304,17 +307,18 @@ export async function makePDF(book, source, progress) {
       const [[x, y], [w, h]] = o.frame;
       if (kind(o) === "ink") {
         const c = o.content.ink._1;
-        const core = ballpointCorePath(o);
+        const core = materialCorePath(o);
         const options = {
           x: 0,
           y: H + top,
           color: lib.rgb(c.r, c.g, c.b),
-          opacity: (core ? 0.43 : 1) * (o.opacity ?? 1),
+          opacity: (core ? inkLayers(o.inkNib?.tip)[0] : 1) * (o.opacity ?? 1),
           blendMode:
             o.instrument === "marker" ? lib.BlendMode.Multiply : undefined,
         };
         page.drawSvgPath(inkPath(o), options);
-        if (core) page.drawSvgPath(core, {...options, opacity: o.opacity ?? 1});
+        if (core && o.inkNib?.tip === "Pencil") graphitePDFFill(lib, doc, page, graphite, c, core, H+top);
+        else if (core) page.drawSvgPath(core, {...options, opacity: inkLayers(o.inkNib?.tip)[1] * (o.opacity ?? 1)});
       } else if (kind(o) === "image") {
         let img = pngs.get(o.id);
         if (!img) {

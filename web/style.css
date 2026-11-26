@@ -855,3 +855,8 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
 @media (max-width: 650px) {
   #files img { width: 25px; height: 25px; }
 }
+
+.choices.writing-tips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}

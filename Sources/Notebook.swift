@@ -32,6 +32,11 @@ struct InkPoint: Codable, Equatable {
   }
 }
 
+struct InkNib: Codable, Equatable {
+  let tip: String
+  var width: CGFloat
+}
+
 struct NoteObject: Codable, Equatable, Identifiable {
   enum Content: Codable, Equatable {
     case ink([InkPoint], InkColor)
@@ -47,6 +52,7 @@ struct NoteObject: Codable, Equatable, Identifiable {
   var instrument: String?
   var opacity: Double?
   var ballpointWidth: CGFloat?
+  var inkNib: InkNib?
   var table: TableGrid?
   var codeStyle: Bool?
   var layoutFrame: CGRect? = nil
@@ -67,6 +73,7 @@ struct NoteObject: Codable, Equatable, Identifiable {
       guard let moved = Self.ink(ink, color: color, id: id) else { return self }
       result.frame = moved.frame
       result.content = moved.content
+      result.inkNib?.width *= scale
       result.ballpointWidth = ballpointWidth.map { $0 * scale }
       return result
     }
@@ -305,6 +312,7 @@ func cutInk(_ object: NoteObject, intersects: (InkPoint) -> Bool) -> [NoteObject
   if !run.isEmpty { result.append(run) }
   return result.enumerated().compactMap { i, points in
     var piece = NoteObject.ink(points, color: color, id: i == 0 ? object.id : UUID())
+    piece?.inkNib = object.inkNib
     piece?.ballpointWidth = object.ballpointWidth
     piece?.instrument = object.instrument
     piece?.opacity = object.opacity

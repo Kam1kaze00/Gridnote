@@ -81,13 +81,13 @@ const engines = require("playwright");
       (await draw([0.1, 0.8, 1])).every((x) => Math.abs(x - 0.55) < 0.00001),
     );
     const spans = {};
-    for (const name of ["Pen", "Brush", "Fineliner"]) {
+    for (const name of ["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]) {
       await options();
       await tip(name);
       const original = Number(
         await panel.getByLabel("Width", { exact: true }).inputValue(),
       );
-      assert.equal(original, { Pen: 1.5, Brush: 2, Fineliner: 1.1 }[name]);
+      assert.equal(original, { Pen: 1.5, Brush: 2, Fineliner: 1.1, Gel:2.5, Fountain:4.2, Pencil:2.1 }[name]);
       await slider("Width", 3);
       const radii = await draw([0.1, 0.4, 0.8, 1]);
       spans[name] = Math.max(...radii) - Math.min(...radii);
@@ -97,6 +97,13 @@ const engines = require("playwright");
         spans.Brush > 3 * spans.Pen &&
         spans.Fineliner < 0.00001,
     );
+    assert(spans.Gel < spans.Pen && spans.Pencil > spans.Fountain);
+    const tips = await page.evaluate(async () => {
+      const {loadRecord,loadState} = await import("./store.mjs");
+      const {book} = await loadRecord(await loadState("last"));
+      return book.objects.slice(-3).map(o => o.inkNib);
+    });
+    assert.deepEqual(tips,["Gel","Fountain","Pencil"].map(tip => ({tip,width:3})));
     const density = await page.evaluate(async () => {
       const {loadState, loadRecord} = await import("./store.mjs");
       const {paintObject} = await import("./render.mjs");
@@ -216,6 +223,45 @@ const engines = require("playwright");
       return [sample(0.8)/sample(0), midY(fitted("Fineliner")), midY(fitted("Pen"))];
     });
     assert(detail[0] > 1.25 && detail[1] < detail[2], "brush tilt and fineliner micro-stabilization");
+    // Inspect the ink deposited on an actual exported page at the same width and color.
+    const marks = await page.evaluate(async () => {
+      const {blank,W,makeInk} = await import("./engine.mjs");
+      const {makePDF,readPDF,pdfBitmap} = await import("./render.mjs");
+      const book = blank();
+      book.defaultPaper = {ruling:"Whiteboard",tint:"White"};
+      function stroke(tip,y,slope=0) {
+        const points = [0,1].map(t=>({position:[90+t*30, y+t*slope],radius:3}));
+        const o = makeInk(points,{r:0,g:0,b:0});
+        o.inkNib = {tip,width:4};
+        book.objects.push(o);
+      }
+      stroke("Gel",50);
+      stroke("Pencil",80);
+      stroke("Fountain",116,30);
+      stroke("Fountain",178,-30);
+      const zoom = 5, doc = await readPDF(await makePDF(book));
+      const bitmap = await pdfBitmap(doc,0,W*zoom);
+      const ctx = bitmap.getContext("2d");
+      function scan(y,w,h) {
+        const bytes=ctx.getImageData(100*zoom,Math.round(y*zoom),w,h).data;
+        const gray=[];
+        for(let i=0;i<bytes.length;i+=4) gray.push(bytes[i]);
+        return gray;
+      }
+      const gel=scan(49.5,60,5), pencil=scan(79.5,60,5);
+      const coverage = (y, slope) => {
+        // The centreline at x=100 lies ten points along the diagonal.
+        const xx=100*zoom, yy=Math.round((y+10*slope)*zoom);
+        const data=ctx.getImageData(xx,yy-40,1,80).data;
+        let ink=0;
+        for(let i=0;i<data.length;i+=4) ink+=(255-data[i])/255;
+        return ink;
+      };
+      return {gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
+        narrow:coverage(116,1), broad:coverage(178,-1)};
+    });
+    assert(marks.gel < 10 && marks.graphiteContrast > 45, "gel is opaque and the printed pencil shows paper tooth");
+    assert(marks.broad > 1.7*marks.narrow, "a broad fountain nib changes the printed width with direction");
     assert.deepEqual(errors, []);
     console.log(
       "PASS",

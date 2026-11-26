@@ -104,7 +104,7 @@ export function useFinger(value) {
   prefs.fingerWriting = value;
   remember();
 }
-const tipWidths = { Pen: 1.5, Brush: 2, Fineliner: 0.9 };
+const tipWidths = { Pen: 1.5, Brush: 2, Fineliner: 0.9, Gel: 2.5, Fountain: 4.2, Pencil: 2.1 };
 const deviceTuning = new Set(["pressure", "smoothing", "scroll"]);
 export const defaultSettings = {
   nib: "Brush",
@@ -142,6 +142,9 @@ export const defaultSettings = {
 export function pressureResponse(p, force) {
   if (!p.usePressure || p.nib === "Fineliner" || !Number.isFinite(force)) return 1;
   const level = Math.pow(Math.max(0, Math.min(1, force)), p.pressure);
+  if (p.nib === "Gel") return 0.94 + 0.12 * level;
+  if (p.nib === "Fountain") return 0.75 + 0.48 * level;
+  if (p.nib === "Pencil") return 0.32 + 1.35 * level;
   return p.nib === "Pen"
     ? 0.74 + 0.36 * level * (0.72 + 0.28 * level)
     : 0.08 + 3.05 * level / (0.70 + 0.30 * level);
@@ -154,7 +157,7 @@ export function sampledRadius(p, force, previous, distance, elapsed, lift, stylu
       previous * Math.exp(-distance / Math.max(1, p.width)));
   }
   const dt = Math.max(0.001, elapsed);
-  if (force == null && p.nib === "Brush" && !stylus)
+  if (force == null && p.nib !== "Pen" && !stylus)
     force = previous == null ? 0.42 : 0.22 + 0.54 / (1 + distance / (dt * 230));
   if (p.nib === "Pen") {
     const load = force ?? (stylus ? null : 0.62);
@@ -164,7 +167,8 @@ export function sampledRadius(p, force, previous, distance, elapsed, lift, stylu
     }
   }
   if (force == null) return previous ?? p.width / 2;
-  const spread = p.nib === "Brush" ? 1 + 0.65 * Math.min(1, Math.abs(crossTilt)) * force : 1;
+  const tiltGain = p.nib === "Brush" ? 0.65 : p.nib === "Pencil" ? 1.5 : 0;
+  const spread = 1 + tiltGain * Math.min(1, Math.abs(crossTilt)) * force;
   const target = p.width * pressureResponse(p, force) * spread / 2;
   if (previous == null) return target;
   const response = p.nib === "Brush" && target > previous ? 0.008 : 0.0035;

@@ -105,19 +105,16 @@ import WebKit
     writer.performClick(nil)
     let popover = owner.settingsPopover!
     let panel = popover.contentViewController!.view
-    let tips = visibleViews(NSSegmentedControl.self, in: panel)[0]
+    let tips = visibleViews(NSButton.self, in: panel).filter { WritingTip(rawValue: $0.title) != nil }
     let sliders = visibleViews(NSSlider.self, in: panel)
     let width = sliders.first { $0.accessibilityLabel() == "Width" }!
     let response = sliders.first { $0.accessibilityLabel() == "Pressure response" }!
     let toggle = visibleViews(NSButton.self, in: panel).first { $0.title == "Use pen pressure" }!
     expect(
-      (0..<tips.segmentCount).compactMap { tips.label(forSegment: $0) } == [
-        "Pen", "Brush", "Fineliner",
-      ],
-      "Writer offers its three tips in one panel")
+      Set(tips.map(\.title)) == Set(["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]),
+      "Writer offers its six tips in one panel")
     func pick(_ tip: WritingTip) {
-      tips.selectedSegment = WritingTip.allCases.firstIndex(of: tip)!
-      tips.sendAction(tips.action, to: tips.target)
+      tips.first { $0.title == tip.rawValue }!.performClick(nil)
       expect(
         preferences.nib == tip && writer.caption == "Writer",
         "switch to " + tip.rawValue + " keeps the Writer name")
@@ -159,6 +156,12 @@ import WebKit
       spans.append(radii.max()! - radii.min()!)
       let object = canvas.notebook.objects.last!
       expect(object.ballpointWidth == (tip == .pen ? 3 : nil), "only pressure ballpoint has layered ink")
+      if [.gel,.fountain,.brush,.pencil].contains(tip) {
+        expect(object.inkNib == InkNib(tip: tip.rawValue, width: 3), "the selected writing material survives pen lift")
+        let scaled = object.transformed(from: .zero, scale: 2, offset: .zero)
+        expect(scaled.inkNib?.width == 6 && cutInk(object) { $0.position.x > 43 }.first?.inkNib == object.inkNib,
+               "resizing and clipping preserve the material of a Writer stroke")
+      }
       if tip == .pen, case .ink(let points, _) = object.content {
         let renderer = PaperRenderer()
         func coverage(_ point: InkPoint) -> CGFloat {
@@ -177,6 +180,7 @@ import WebKit
     expect(
       spans[0] > 0.2 && spans[1] > 3 * spans[0] && spans[2] < 0.0001,
       "embedded Wacom pressure produces a ballpoint, expressive brush and uniform fineliner")
+    pick(.fineliner)
     expect(!response.isEnabled && !toggle.isEnabled, "Fineliner keeps a fixed tip")
     pick(.brush)
     set(width, 4)
@@ -258,7 +262,7 @@ import WebKit
       preferences.nib = tip
       return preferences.toolAppearance(.brush).symbol
     }
-    expect(Set(brushSymbols).count == 3, "each writing tip has its own toolbar symbol")
+    expect(Set(brushSymbols).count == WritingTip.allCases.count, "each writing tip has its own toolbar symbol")
     let eraseSymbols = EraseMode.allCases.map { mode in
       preferences.eraseMode = mode
       return preferences.toolAppearance(.eraser).symbol

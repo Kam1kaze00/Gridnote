@@ -343,7 +343,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       action: #selector(clearPage(_:)))
     clearWriting.controlHeight = 24
     clearWriting.setAccessibilityLabel("Clear writing on this page")
-    clearWriting.toolTip = "Clear Pen, Brush and Fineliner strokes on this page. Undo with ⌘Z."
+    clearWriting.toolTip = "Clear Writer strokes on this page. Undo with ⌘Z."
     undoButton = ChromeButton(
       symbol: "arrow.uturn.backward", target: self, action: #selector(undoEdit(_:)))
     redoButton = ChromeButton(
