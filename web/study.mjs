@@ -41,7 +41,7 @@ export async function scanProblems(book, source, page) {
     found = [];
   const ctx = document.createElement("canvas").getContext("2d");
   const add = (text, frame, code = false) => {
-    if (overlaps(frame, area) && GridnoteSolve.solve(text, code))
+    if (overlaps(frame, area) && globalThis.GridnoteSolve.solve(text, code))
       found.push({ text, frame, code });
   };
   for (const o of objects) {
@@ -103,7 +103,7 @@ export async function scanProblems(book, source, page) {
       const questions = found.filter(
         (item) =>
           overlaps(frame, item.frame) &&
-          GridnoteSolve.solve(item.text)?.kind === "Question",
+          globalThis.GridnoteSolve.solve(item.text)?.kind === "Question",
       );
       if (origin === "Photo" && questions.length === 1 && within.length > 1) {
         questions[0].text = within.map((l) => l.text).join("\n");
@@ -173,7 +173,7 @@ export async function scanProblems(book, source, page) {
           if (!line.text?.trim()) continue;
           const { x0, y0, x1, y1 } = line.bbox;
           const raw = line.text.trim(),
-            original = GridnoteSolve.readInk(raw),
+            original = globalThis.GridnoteSolve.readInk(raw),
             frame = [
               [offset[0] + x0 / f, offset[1] + y0 / f],
               [(x1 - x0) / f, (y1 - y0) / f],
@@ -185,7 +185,7 @@ export async function scanProblems(book, source, page) {
             )
           )
             continue;
-          if (GridnoteSolve.solve(original)) {
+          if (globalThis.GridnoteSolve.solve(original)) {
             found.push({
               text: original,
               frame,
@@ -213,7 +213,7 @@ export async function scanProblems(book, source, page) {
                 height: Math.min(c.height - topPx, y1 - y0 + 16),
               },
             });
-            const text = GridnoteSolve.readInk(
+            const text = globalThis.GridnoteSolve.readInk(
               corrected.data.text.trim() || original,
             );
             found.push({
@@ -259,7 +259,7 @@ export function studyContent(pop, problem) {
   let current, connected = false;
   const stop = () => { current?.abort(); current = undefined; };
   pop.addEventListener("panelclose", () => { stop(); lifetime.abort(); }, { once: true });
-  const result = () => GridnoteSolve.solve(input.value, problem.code);
+  const result = () => globalThis.GridnoteSolve.solve(input.value, problem.code);
   const local = () => {
     stop();
     if (ai) ai.textContent = "Ask AI";

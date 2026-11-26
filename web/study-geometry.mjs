@@ -1,4 +1,4 @@
-import { W, H, bounds, corners, groupRect, overlaps, kind } from "./engine.mjs";
+import { W, H, bounds, corners, overlaps, kind } from "./engine.mjs";
 export function intersection(a, b) {
   const [[x, y], [w, h]] = a,
     [[u, v], [p, q]] = b,
@@ -24,7 +24,7 @@ export function inkRegions(objects, area) {
     .filter((o) => kind(o) === "ink" && !o.instrument)
     .sort((a, b) => a.frame[0][0] - b.frame[0][0])) {
     const f = intersection(o.frame, area),
-      [[x, y], [w, h]] = f;
+      [[, y], [, h]] = f;
     const i = groups.findLastIndex(
       (g) =>
         Math.abs(g[0][1] + g[1][1] / 2 - y - h / 2) <=

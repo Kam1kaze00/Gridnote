@@ -451,6 +451,19 @@ hr {
     gap: 5px;
   }
 }
+@media (max-width: 400px) {
+  #pdfmodal .pdf-toolbar:first-child {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  #pdfmodal .pdf-toolbar .spacer { display: none; }
+  #pdfclose { justify-self: end; }
+  #pdfshare[hidden] + #pdfsave,
+  #pdfshare:has(+ #pdfsave[hidden]) { grid-column: 1 / -1; }
+}
 .camera-dialog {
   width: min(760px, 97vw);
   height: min(850px, 92dvh);

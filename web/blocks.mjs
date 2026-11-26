@@ -1,4 +1,4 @@
-import { G, clamp, dist, makeInk, rect, rgb } from "./engine.mjs";
+import { G, clamp, makeInk, rgb } from "./engine.mjs";
 export const markerNames = ["Yellow", "Mint", "Sky", "Coral", "Lilac"];
 export const markers = [
   [1, 0.83, 0.08],

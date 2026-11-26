@@ -34,7 +34,6 @@ import {
   clamp,
   rect,
   corners,
-  bounds,
   groupRect,
   contains,
   overlaps,
@@ -129,7 +128,7 @@ let editing = null,
   restoring = false,
   paintFrame = 0;
 let pdfCache = new Map(),
-  pdfResult = null,
+  previewFile = null,
   pdfPreview = null,
   pdfIndex = 0,
   previewEpoch = 0,
@@ -224,7 +223,7 @@ function snapshot() {
     };
   }
   if (editing) {
-    const value = editor.stringValue ?? editor.value;
+    const value = editor.value;
     const o = textObject(
       editing.object,
       value,
@@ -713,7 +712,7 @@ function paint() {
               backgroundReady();
             })
             .catch((e) => {
-              if (doc === source) {
+              if (doc === source && pdfCache.get(n) === hold) {
                 pdfCache.set(n, { width: want });
                 notify(e.message);
               }
@@ -1968,7 +1967,7 @@ function copySelection(e) {
 function pasteCopies(items) {
   if (!items?.length) return;
   const box = groupRect(items),
-    [[x, y], [w, h]] = box,
+    [[x, y], [w]] = box,
     p = insertion(),
     visible = [
       [view.scrollLeft / scale, view.scrollTop / scale],
@@ -2924,23 +2923,32 @@ async function pdfAction(preview) {
   finishGesture();
   busyPDF = true;
   const startPage = currentPage();
+  const notebookID = book.id;
+  const filename = title + (book.sourcePDF ? " - Annotated" : "") + ".pdf";
   const b = preview ? $("preview") : $("export"),
     old = b.textContent;
   $("preview").disabled = $("export").disabled = true;
   try {
-    pdfResult = await makePDF(
-      book,
-      source,
-      (p, n) => (b.textContent = p + "/" + n),
-    );
-    if (preview) {
-      if (pdfPreview) await pdfPreview.destroy();
-      pdfPreview = await readPDF(pdfResult.slice());
-      pdfIndex = clamp(startPage, 0, pdfPreview.numPages - 1);
-      $("pdfshare").hidden = !canSharePDF();
-      $("pdfmodal").showModal();
-      await updatePreview();
-    } else savePDF();
+    const bytes = await makePDF(book, source, (p, n) => (b.textContent = p + "/" + n));
+    const file = new File([bytes], filename, { type: "application/pdf" });
+    if (!preview) {
+      download(file, file.name);
+      return;
+    }
+    if (book.id !== notebookID || !$("welcome").hidden) return;
+    const document = await readPDF(bytes);
+    if (book.id !== notebookID || !$("welcome").hidden) {
+      await document.destroy();
+      return;
+    }
+    pdfPreview = document;
+    previewFile = file;
+    pdfIndex = clamp(startPage, 0, document.numPages - 1);
+    $("pdfshare").hidden = !canSharePDF();
+    $("pdfshare").textContent = bundledIPad ? "Share or save PDF" : "Share PDF";
+    $("pdfsave").hidden = bundledIPad;
+    $("pdfmodal").showModal();
+    await updatePreview();
   } finally {
     busyPDF = false;
     b.textContent = old;
@@ -3000,19 +3008,12 @@ $("solve").onclick = async () => {
     }
   }
 };
-function shareFile() {
-  return new File(
-    [pdfResult],
-    title + (book.sourcePDF ? " - Annotated" : "") + ".pdf",
-    { type: "application/pdf" },
-  );
-}
 function canSharePDF() {
   if (bundledIPad) return true;
   try {
     return (
       typeof navigator.share === "function" &&
-      navigator.canShare?.({ files: [shareFile()] })
+      navigator.canShare?.({ files: [previewFile] })
     );
   } catch {
     return false;
@@ -3021,7 +3022,7 @@ function canSharePDF() {
 $("pdfshare").onclick = async () => {
   try {
     if (bundledIPad) savePDF();
-    else if (canSharePDF()) await navigator.share({ files: [shareFile()] });
+    else if (canSharePDF()) await navigator.share({ files: [previewFile] });
     else savePDF();
   } catch (e) {
     if (e.name !== "AbortError")
@@ -3029,19 +3030,28 @@ $("pdfshare").onclick = async () => {
   }
 };
 function savePDF() {
-  download(
-    new Blob([pdfResult], { type: "application/pdf" }),
-    title + (book.sourcePDF ? " - Annotated" : "") + ".pdf",
-  );
+  if (previewFile) download(previewFile, previewFile.name);
 }
+$("pdfmodal").addEventListener("close", () => {
+  if ($("pdfmodal").open) return;
+  ++previewEpoch;
+  const previous = pdfPreview;
+  pdfPreview = previewFile = null;
+  $("pdfcanvas").width = $("pdfcanvas").height = 0;
+  $("pdfcount").textContent = "";
+  if (previous) run(() => previous.destroy());
+});
 async function updatePreview() {
-  const token = ++previewEpoch,
-    n = pdfIndex;
-  const canvas = await pdfBitmap(
-    pdfPreview,
-    n,
-    Math.min(1450, (innerWidth - 30) * Math.min(2, devicePixelRatio || 1)),
-  );
+  const token = ++previewEpoch, n = pdfIndex, doc = pdfPreview;
+  if (!doc) return;
+  let canvas;
+  try {
+    canvas = await pdfBitmap(doc, n,
+      Math.min(1450, (innerWidth - 30) * Math.min(2, devicePixelRatio || 1)));
+  } catch (error) {
+    if (token === previewEpoch) throw error;
+    return;
+  }
   if (token !== previewEpoch) return;
   const shown = $("pdfcanvas");
   shown.width = canvas.width;
@@ -3075,7 +3085,7 @@ document.addEventListener("keydown", (e) => {
     }
     return;
   }
-  if ($("pdfmodal").open || document.querySelector("dialog[open]")) return;
+  if (document.querySelector("dialog[open]")) return;
   if (!book) return;
   if (mod) {
     const k = e.key.toLowerCase();
@@ -3312,7 +3322,7 @@ $("pdfnext").onclick = () => {
   }
 };
 grainReady.then(backgroundReady);
-const launcher = GridnoteLauncher.mount($("welcome"), {
+const launcher = globalThis.GridnoteLauncher.mount($("welcome"), {
   device: mobileSurface ? "" : deviceLabel(),
   start: action => run(() => enterFromLauncher(action)),
 });

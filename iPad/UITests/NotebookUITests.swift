@@ -21,7 +21,7 @@ final class NotebookUITests: XCTestCase {
         // The normal file import, notebook database, PDF worker and system export
         // should all work using the resources in the installed app.
         preview.tap()
-        let share = app.buttons["Share PDF"].firstMatch
+        let share = app.buttons["Share or save PDF"].firstMatch
         XCTAssertTrue(share.waitForExistence(timeout: 45), app.debugDescription)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "Gridnote-iPad-PDF"

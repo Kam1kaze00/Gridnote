@@ -2,7 +2,7 @@ name: Verify iPad app
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'feature/ipad-app-store']
+    branches: [main]
     paths: ['iPad/**', 'web/**', 'scripts/prepare_web.py', '.github/workflows/ipad.yml', 'docs/examples/Series circuit.gridnote']
   pull_request:
     branches: [main]

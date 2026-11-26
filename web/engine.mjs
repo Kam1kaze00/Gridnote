@@ -35,16 +35,12 @@ export const sourceIndex = (book, n) => {
   const i = book.sourcePageMap?.[n] ?? n;
   return i < 0 ? null : i;
 };
-export const pageCount = (book) =>
-  book.objects.reduce(
-    (n, o) => Math.max(n, Math.ceil((o.frame[0][1] + o.frame[1][1]) / H)),
-    Math.max(
-      1,
-      book.sourcePages,
-      book.minimumPages ?? 1,
-      ...Object.keys(book.pagePaper || {}).map((n) => Number(n) + 1),
-    ),
-  );
+export function pageCount(book) {
+  let count = Math.max(1, book.sourcePages, book.minimumPages ?? 1);
+  for (const index of Object.keys(book.pagePaper || {})) count = Math.max(count, Number(index) + 1);
+  for (const o of book.objects) count = Math.max(count, Math.ceil((o.frame[0][1] + o.frame[1][1]) / H));
+  return count;
+}
 export const kind = (o) => Object.keys(o.content)[0];
 export const rgb = (c) =>
   "rgb(" + [c.r, c.g, c.b].map((v) => Math.round(v * 255)).join(",") + ")";
@@ -310,7 +306,7 @@ export function materialCorePath(o) {
   if (nib.tip === "Pen") return ballpointCorePath(o);
   if (nib.tip !== "Brush") return null;
   if (nib.finish === "Inked" || nib.finish === "Dry") return brushCore(pts, nib);
-  const normals = pts.map((p, i) => {
+  const normals = pts.map((_, i) => {
     const d = sub(pts[Math.min(pts.length-1,i+1)].position, pts[Math.max(0,i-1)].position);
     const length = Math.hypot(...d);
     return length > 0.00001 ? [-d[1]/length, d[0]/length] : [0,1];
@@ -651,12 +647,13 @@ export function validate(book) {
         book.minimumPages > 100000))
   )
     throw Error("Unsupported or damaged notebook.");
+  const coordinate = (value) => Number.isFinite(value) && Math.abs(value) <= 100000 * H;
+  const pair = (p) => Array.isArray(p) && p.length === 2 && p.every(coordinate);
+  const color = (c) => [c?.r, c?.g, c?.b].every(v => Number.isFinite(v) && v >= 0 && v <= 1);
   const checkFrame = (f) =>
     Array.isArray(f) &&
     f.length === 2 &&
-    f.every(
-      (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite),
-    ) &&
+    f.every(pair) &&
     f[1][0] > 0 &&
     f[1][1] > 0 &&
     f[0][1] + f[1][1] < 100000 * H;
@@ -669,18 +666,24 @@ export function validate(book) {
       ))
   )
     throw Error("Invalid source page mapping.");
+  if (book.pagePaper != null && (typeof book.pagePaper !== "object" || Array.isArray(book.pagePaper) ||
+      Object.keys(book.pagePaper).some(key => !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= 100000)))
+    throw Error("Invalid paper page number.");
   const ids = new Set();
   for (const o of book.objects) {
-    if (!checkFrame(o.frame) || !o.id || ids.has(o.id))
+    if (!o || !checkFrame(o.frame) || (o.layoutFrame != null && !checkFrame(o.layoutFrame)) ||
+        typeof o.id !== "string" || !o.id || ids.has(o.id) || !o.content || Object.keys(o.content).length !== 1)
       throw Error("Invalid notebook object.");
     ids.add(o.id);
     const k = kind(o),
       d = o.content[k];
+    if (!d || ((k === "ink" || k === "text") && !color(d._1)))
+      throw Error("Invalid notebook content.");
     if (
       k === "ink" &&
       (!Array.isArray(d._0) ||
         !d._0.length ||
-        d._0.some((p) => !(p.radius > 0) || !p.position.every(Number.isFinite)))
+        d._0.some((p) => !p || !coordinate(p.radius) || p.radius <= 0 || !pair(p.position)))
     )
       throw Error("Invalid ink data.");
     if (k === "text" && (typeof d._0 !== "string" || !(d._2 > 0 && d._2 <= 1_000_000)))

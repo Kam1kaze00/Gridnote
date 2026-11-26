@@ -105,6 +105,15 @@ async function main() {
       return [migrated.defaultPaper, migrated.pagePaper[0]];
     });
     assert.deepEqual(paper, [{ ruling: "Dotted", tint: "Sage" }, { ruling: "Ruled", tint: "Ivory" }]);
+    const rejectedPaper = await page.evaluate(async () => {
+      const { blank, validate } = await import("./engine.mjs");
+      return ["NaN", "-1", "100000"].every(index => {
+        const notebook = blank();
+        notebook.pagePaper = { [index]: { ruling: "Grid", tint: "White" } };
+        try { validate(notebook); return false; } catch { return true; }
+      });
+    });
+    assert(rejectedPaper, "damaged paper indexes are reported before replacing the current notebook");
     assert(!(await page.locator("#sheet").isVisible()));
     await page.click("#new");
     await page.waitForSelector("#tool-table");
@@ -279,6 +288,11 @@ async function main() {
     const shared = await page.evaluate(() => window.sharedBytes);
     assert.deepEqual(bytes, Buffer.from(shared));
     await page.click("#pdfclose");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width === 0);
+    await page.click("#preview");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width > 0);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width === 0);
     const recognition = await page.evaluate(async () => {
       const { scanProblems } = await import("./study.mjs"),
         { blank } = await import("./engine.mjs");

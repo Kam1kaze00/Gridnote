@@ -59,7 +59,7 @@ final class NotebookViewController: UIViewController, WKNavigationDelegate, WKUI
 
     private func local(_ url: URL?) -> Bool {
         guard let url, let origin else { return false }
-        return url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port && url.path.hasPrefix("/app")
+        return url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port && (url.path == "/app" || url.path.hasPrefix("/app/"))
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

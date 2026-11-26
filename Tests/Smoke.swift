@@ -700,6 +700,14 @@ import WebKit
       "rotated cropped source page survives export")
 
     let broken = directory.appendingPathComponent("missing-folder/Recovered.gridnote")
+    var damaged = Notebook()
+    var damagedInk = firstInk
+    damagedInk.content = .ink([], InkColor.colors[0].1)
+    damaged.objects = [damagedInk]
+    let invalidFile = directory.appendingPathComponent("incomplete.gridnote")
+    try JSONEncoder().encode(damaged).write(to: invalidFile)
+    let rejected = (try? storage.open(invalidFile)) == nil
+    expect(rejected, "incomplete ink is rejected before replacing the open notebook")
     var recovery = Notebook()
     recovery.objects = [firstInk]
     recovery.revision = 11
