@@ -3198,7 +3198,8 @@ function updateToolIcon(id, button, prefs) {
     );
   if (id === "marker") button.querySelector("svg").style.color = rgb(markers[prefs.markerInk]);
   const [family, shortcut] = toolNames[id];
-  button.title = family + " · " + mode + (shortcut ? " (" + shortcut + ")" : "");
+  const label = id === "brush" ? family : family + " · " + mode;
+  button.title = label + (shortcut ? " (" + shortcut + ")" : "");
   button.setAttribute("aria-description", mode);
 }
 const svgNS = "http://www.w3.org/2000/svg";

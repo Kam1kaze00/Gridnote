@@ -208,15 +208,15 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
 
   private func setupToolbar() {
     let brush = ChromeButton(
-      NoteTool.brush.title, symbol: "pencil.tip", shortcut: "Q", target: self,
+      NoteTool.brush.title, symbol: "pencil.tip", shortcut: "Q", style: .choice, target: self,
       action: #selector(brushTool(_:)))
     let selector = ChromeButton(
-      "Selector", symbol: "cursorarrow", shortcut: "W", target: self,
+      "Selector", symbol: "cursorarrow", shortcut: "W", style: .choice, target: self,
       action: #selector(selectorTool(_:)))
     let eraser = ChromeButton(
-      "Eraser", symbol: "eraser", shortcut: "E", target: self, action: #selector(eraserTool(_:)))
+      "Eraser", symbol: "eraser", shortcut: "E", style: .choice, target: self, action: #selector(eraserTool(_:)))
     let text = ChromeButton(
-      "Text", symbol: "textformat", shortcut: "R", target: self, action: #selector(textTool(_:)))
+      "Text", symbol: "textformat", shortcut: "R", style: .choice, target: self, action: #selector(textTool(_:)))
     brush.toolTip = "Writer (Q)"
     selector.toolTip =
       "Selector (W). Drag the selected objects or use the corner handles to resize."
@@ -229,7 +229,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       (.table, "tablecells", "Table"),
     ]
     let extraButtons = extra.enumerated().map { index, item -> ChromeButton in
-      let b = ChromeButton(symbol: item.1, target: self, action: #selector(extraTool(_:)))
+      let b = ChromeButton(symbol: item.1, style: .choice, target: self, action: #selector(extraTool(_:)))
       b.tag = index
       b.setAccessibilityLabel(item.2)
       b.toolTip = item.2
@@ -873,27 +873,25 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     if !pagesSidebar.isHidden { pagesSidebar.update(canvas.notebook, current: page) }
     solveButton?.isEnabled = canvas.active && solveButton.caption != "Scanning…"
     solveButton?.selected = !canvas.studyProblems.isEmpty
+    let compact = (window?.frame.width ?? 1000) < 900
     for (tool, button) in toolButtons {
       let appearance = preferences.toolAppearance(tool)
       if button.symbol != appearance.symbol { button.symbol = appearance.symbol }
       let family = tool.title
       let detail = tool == .marker ? markerColors[preferences.markerIndex].0 : appearance.name
-      let label = family == detail ? family : family + " · " + detail
+      if button.shortcut != nil {
+        let caption = compact ? "" : family
+        if button.caption != caption { button.caption = caption }
+      }
+      let label = tool == .brush || family == detail ? family : family + " · " + detail
       button.toolTip = label + (button.shortcut.map { " (" + $0 + ")" } ?? "")
-      if button.accessibilityLabel() != label { button.setAccessibilityLabel(label) }
+      if button.accessibilityLabel() != family { button.setAccessibilityLabel(family) }
+      button.setAccessibilityHelp(detail)
       if tool == .marker { button.textColor = markerColors[preferences.markerIndex].1.ns }
       button.selected = tool == canvas.effectiveTool
     }
     selectionActions.isHidden = canvas.effectiveTool != .selector || !canvas.hasSelection
     selectionActions.caption = "\(canvas.selectionCount) selected"
-    let compact = (window?.frame.width ?? 1000) < 900
-    for (tool, b) in toolButtons where [.brush, .selector, .eraser, .text].contains(tool) {
-      let name = compact ? "" : tool.title
-      if b.caption != name {
-        b.caption = name
-        b.setAccessibilityLabel(b.toolTip ?? tool.title)
-      }
-    }
     palette.isHidden = !preferences.paletteVisible
     paletteButton.selected = preferences.paletteVisible
     for (index, button) in colorButtons.enumerated() {

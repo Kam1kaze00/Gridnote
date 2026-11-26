@@ -27,6 +27,13 @@ const engines = require("playwright");
       await button.click();
       assert.equal(await button.getAttribute("aria-pressed"), "true");
       assert.equal(await writer.locator(".tool-name").textContent(), "Writer");
+      assert.equal(await writer.getAttribute("title"), "Writer (Q)");
+      const highlighted = await panel.locator(".writing-tips button").evaluateAll(items =>
+        items.filter(b => {
+          const [red,green] = getComputedStyle(b).backgroundColor.match(/[0-9.]+/g).map(Number);
+          return green-red > 65;
+        }).map(b => b.textContent));
+      assert.deepEqual(highlighted,[name], "the pressed tip has the only mint fill");
     };
     const slider = (label, value) =>
       panel

@@ -38,7 +38,7 @@ final class Surface: NSView {
 }
 
 final class ChromeButton: NSButton {
-  enum Style { case plain, outlined, primary }
+  enum Style { case plain, outlined, primary, choice }
   var caption: String {
     didSet {
       invalidateIntrinsicContentSize()
@@ -55,7 +55,13 @@ final class ChromeButton: NSButton {
   private let fallbackSymbol: String?
   var shortcut: String?
   var style: Style
-  var selected = false { didSet { needsDisplay = true } }
+  var selected = false {
+    didSet {
+      let pressedState: NSControl.StateValue = selected ? .on : .off
+      if style == .choice && state != pressedState { state = pressedState }
+      needsDisplay = true
+    }
+  }
   var textColor: NSColor? { didSet { needsDisplay = true } }
   var swatch: NSColor?
   var controlWidth: CGFloat?
@@ -75,7 +81,7 @@ final class ChromeButton: NSButton {
     self.shortcut = shortcut
     self.style = style
     super.init(frame: .zero)
-    setButtonType(.momentaryChange)
+    setButtonType(style == .choice ? .toggle : .momentaryChange)
     isBordered = false
     focusRingType = .default
     self.target = target
@@ -126,27 +132,26 @@ final class ChromeButton: NSButton {
     let shape = NSBezierPath(
       roundedRect: area, xRadius: 6, yRadius: 6)
     let pressed = isHighlighted && isEnabled
-    if style == .primary, isEnabled {
+    let accentFill = isEnabled && (style == .primary || (style == .choice && selected))
+    if accentFill {
       (pressed ? appAccent.blended(withFraction: 0.18, of: .white) ?? appAccent : appAccent)
         .setFill()
       shape.fill()
-    } else if selected || (hover && isEnabled) || style == .outlined {
+    } else if selected || (hover && isEnabled) || style == .outlined || style == .choice {
       let fill =
         selected
         ? NSColor(srgbRed: 0.17, green: 0.25, blue: 0.24, alpha: 1)
         : chromeBorder.withAlphaComponent(pressed ? 0.95 : 0.57)
       fill.setFill()
       shape.fill()
-      if selected || style == .outlined {
+      if selected || style == .outlined || style == .choice {
         (selected ? appAccent.withAlphaComponent(0.62) : chromeBorder).setStroke()
         shape.stroke()
       }
     }
-    let foreground =
-      (textColor
-      ?? ((style == .primary && isEnabled)
-        ? chromeBackground : selected ? appAccent : chromeText))
-      .withAlphaComponent(isEnabled ? 1 : 0.38)
+    let foreground = (accentFill
+      ? textColor?.blended(withFraction: 0.7, of: chromeBackground) ?? chromeBackground
+      : textColor ?? (selected ? appAccent : chromeText)).withAlphaComponent(isEnabled ? 1 : 0.38)
     if let swatch {
       let ring = NSBezierPath(
         ovalIn: CGRect(x: area.midX - 9, y: area.midY - 9, width: 18, height: 18))

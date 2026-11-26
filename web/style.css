@@ -851,6 +851,15 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
 #files { gap: 8px; }
 #files img { width: 30px; height: 30px; object-fit: contain; }
 #tools button[aria-pressed="true"] { background: #293c38; border-color: #78b5a6; color: #c4eee1; }
+#toolset button[aria-pressed="true"],
+#popover .choices button[aria-pressed="true"]:not(.swatch) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #102c29;
+}
+#popover .choices button[aria-pressed="true"]:not(.swatch):not(:focus-visible) { outline: none; }
+#popover .choices button:focus-visible { outline: 2px solid white; outline-offset: 1px; }
+#tool-marker[aria-pressed="true"] .glyph { filter: brightness(0.42); }
 #popover > small { display: block; margin-bottom: 8px; }
 @media (max-width: 650px) {
   #files img { width: 25px; height: 25px; }
