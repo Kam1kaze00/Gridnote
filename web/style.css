@@ -895,6 +895,12 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
 
 @media (pointer: coarse) {
   .page-actions { grid-template-columns: repeat(2, minmax(44px, 1fr)); gap: 4px; }
-  .page-actions button, .pdf-toolbar button { min-width: 44px; min-height: 44px; }
+  header button, header #files, .page-actions button, .pdf-toolbar button { min-width: 44px; min-height: 44px; }
   #pdfmodal .pdf-toolbar { flex-wrap: wrap; row-gap: 2px; }
+}
+@media (pointer: coarse) and (max-width: 450px) {
+  header { column-gap: 3px; }
+  header .spacer { display: none; }
+  header #files { flex: 1; }
+  header button:not(#files) { flex-shrink: 0; }
 }

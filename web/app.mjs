@@ -3317,7 +3317,6 @@ for (const [id, [label, key]] of Object.entries(toolNames)) {
   $("toolset").append(b);
 }
 for (const trigger of [ ...$("toolset").children, ...["files", "settings", "paper", "selection", "addimage"].map($) ]) {
-  trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-controls", "popover");
   trigger.setAttribute("aria-expanded", "false");
 }

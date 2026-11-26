@@ -71,8 +71,11 @@ const assert = require("node:assert/strict");
             )
               errors.push(region + " uneven centers");
           }
-          if (region === "header" && items.at(-1)?.right > innerWidth + 1)
-            errors.push("header actions clipped");
+          if (region === "header") {
+            if (items.at(-1)?.right > innerWidth + 1) errors.push("header actions clipped");
+            if (matchMedia("(pointer: coarse)").matches && items.some(r => r.width < 44 || r.height < 44))
+              errors.push("header actions are too small for touch");
+          }
         }
         const sidebar = document.querySelector("#pages-panel");
         const heading = rect(sidebar.querySelector("strong"));
