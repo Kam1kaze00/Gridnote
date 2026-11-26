@@ -69,6 +69,32 @@ private func brushNoise(_ x: CGFloat, _ y: CGFloat, _ seed: UInt32) -> CGFloat {
 }
 
 extension PaperRenderer {
+  // Trim each edge independently where a loaded brush rides over paper fibers.
+  // Sub-nib movement is strongest on a wide downstroke and disappears at the tip.
+  private func inkedEdge(_ points: [InkPoint], nib: InkNib) -> [InkPoint] {
+    guard points.count > 1 else { return points }
+    let seed = UInt32(truncatingIfNeeded: nib.seed ?? 71)
+    var result = [points[0]], travel: CGFloat = 0
+    for (a,b) in zip(points,points.dropFirst()) {
+      let delta = b.position - a.position, length = delta.length
+      let normal = length > 0 ? CGPoint(x: -delta.y/length, y: delta.x/length) : .zero
+      let count = Int(max(1,min(256,ceil(length/0.60))))
+      for step in 1...count {
+        let t = CGFloat(step)/CGFloat(count)
+        var p = a.interpolated(to: b, by: t)
+        let phase = (p.travel ?? ((travel+t*length)/nib.width))*2.5
+        let depth = max(0,min(0.33,p.radius*0.14-0.045))
+        let left = depth*brushNoise(phase/0.76,3,seed)
+        let right = depth*brushNoise(phase/0.92,7,seed)
+        p.position = p.position + normal*((left-right)/2)
+        p.radius -= (left+right)/2
+        result.append(p)
+      }
+      travel += length
+    }
+    return result
+  }
+
   private func brushCore(_ points: [InkPoint], nib: InkNib, finish: BrushFinish) -> CGPath {
     let seed = UInt32(truncatingIfNeeded: nib.seed ?? 71)
     if finish == .inked || points.count == 1 {
@@ -150,7 +176,8 @@ extension PaperRenderer {
       return InkFootprint(body: outline(points), core: outline(grain), nib: nib)
     case "Brush":
       if let finish = nib.finish {
-        return InkFootprint(body: outline(points), core: brushCore(points, nib: nib, finish: finish), nib: nib)
+        let edge = finish == .inked && nib.textured == true ? inkedEdge(points, nib: nib) : points
+        return InkFootprint(body: outline(edge), core: brushCore(edge, nib: nib, finish: finish), nib: nib)
       }
       let core = CGMutablePath()
       let normals = points.indices.map { i -> CGPoint in

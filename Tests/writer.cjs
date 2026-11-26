@@ -104,7 +104,7 @@ const engines = require("playwright");
       const {book} = await loadRecord(await loadState("last"));
       return book.objects.slice(-3).map(o => o.inkNib);
     });
-    assert.deepEqual(tips,["Gel","Fountain","Pencil"].map(tip => ({tip,width:3})));
+    assert.deepEqual(tips,["Gel","Fountain","Pencil"].map(tip => ({tip,width:3,textured:true})));
     const density = await page.evaluate(async () => {
       const {loadState, loadRecord} = await import("./store.mjs");
       const {paintObject} = await import("./render.mjs");
@@ -261,6 +261,16 @@ const engines = require("playwright");
         mark.inkNib = {tip:"Brush",width:2.2,finish,seed:71};
         book.objects.push(mark);
       }
+      const tips = ["Pen","Inked","Dry","Fineliner","Gel","Fountain","Pencil"];
+      const {paintObject} = await import("./render.mjs");
+      const samples = tips.map((name,i) => {
+        const y = 270 + 12*i, brush = ["Inked","Dry"].includes(name);
+        const o = makeInk([0,1].map(t => ({position:[82+t*62,y],radius:4,travel:t*25,speed:300})),{r:0,g:0,b:0});
+        o.inkNib = {tip:brush ? "Brush" : name,width:2.5,textured:true,...(brush ? {finish:name,seed:21} : {})};
+        if (name === "Pen") o.ballpointWidth = 2.5;
+        book.objects.push(o);
+        return o;
+      });
       const zoom = 5, doc = await readPDF(await makePDF(book));
       const bitmap = await pdfBitmap(doc,0,W*zoom);
       const ctx = bitmap.getContext("2d");
@@ -279,10 +289,27 @@ const engines = require("playwright");
         for(let i=0;i<data.length;i+=4) ink+=(255-data[i])/255;
         return ink;
       };
+      const surface = document.createElement("canvas");
+      surface.width = 800; surface.height = 420;
+      const live = surface.getContext("2d");
+      live.fillStyle = "white"; live.fillRect(0,0,surface.width,surface.height);
+      live.scale(zoom,zoom); live.translate(0,-263);
+      samples.forEach(o => paintObject(live,o));
+      function range(bytes) {
+        const sorted = [...bytes].sort((a,b)=>a-b);
+        return sorted[Math.floor(sorted.length*.98)] - sorted[Math.floor(sorted.length*.02)];
+      }
+      const grain = tips.map((tip,i) => {
+        const y=270+12*i;
+        const data=live.getImageData(100*zoom,(y-263)*zoom,180,2).data;
+        return {tip,screen:range(data.filter((_,k)=>k%4===0)),pdf:range(scan(y,180,2))};
+      });
       const gaps = y => scan(y-1.8, 170, 18).filter(value => value > 90).length;
-      return {inkedGaps:gaps(220), dryGaps:gaps(240), gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
+      return {grain,inkedGaps:gaps(220), dryGaps:gaps(240), gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
         narrow:coverage(116,1), broad:coverage(178,-1)};
     });
+    for (const {tip,screen,pdf} of marks.grain)
+      assert(screen > 10 && pdf > 10, tip+" needs visible grain on both canvas and PDF: "+[screen,pdf]);
     assert(marks.dryGaps > 250 && marks.inkedGaps < 5, "the printed Dry brush separates into bristles and Inked stays solid");
     assert(marks.gel < 10 && marks.graphiteContrast > 45, "gel is opaque and the printed pencil shows paper tooth");
     assert(marks.broad > 1.7*marks.narrow, "a broad fountain nib changes the printed width with direction");

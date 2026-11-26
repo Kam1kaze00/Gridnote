@@ -51,6 +51,7 @@ struct InkNib: Codable, Equatable {
   var width: CGFloat
   var finish: BrushFinish? = nil
   var seed: Int? = nil
+  var textured: Bool? = nil
 }
 
 struct NoteObject: Codable, Equatable, Identifiable {

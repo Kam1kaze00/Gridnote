@@ -13,7 +13,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 source_files = """
-    ink-materials.mjs image-size.mjs app.mjs blocks.mjs camera.mjs devices.mjs engine.mjs eraser.mjs
+    ink-materials.mjs writer-grain.mjs image-size.mjs app.mjs blocks.mjs camera.mjs devices.mjs engine.mjs eraser.mjs
     guide.html index.html launcher.html launcher.css launcher.js manifest.webmanifest pages.mjs render.mjs
     solver.js store.mjs study-geometry.mjs study.mjs style.css
 """.split()
