@@ -1598,7 +1598,8 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     if let id = position.editing, let object = notebook.objects.first(where: { $0.id == id }),
       case .text = object.content
     {
-      if let cell = position.cell, object.table != nil {
+      if object.table != nil {
+        guard let cell = position.cell else { return }
         beginCell(at: object.frame.origin, object: object, index: cell)
       } else {
         startText(at: object.frame.origin, existing: object)

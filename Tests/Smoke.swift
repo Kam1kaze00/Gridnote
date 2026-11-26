@@ -773,6 +773,11 @@ import WebKit
     let snapshot = canvas.saveSnapshot
     canvas.finishText()
     canvas.load(snapshot)
+    var missingCell = pos
+    missingCell.cell = nil
+    canvas.restoreInteraction(missingCell)
+    expect(canvas.editor == nil, "A stale cell selection cannot reopen the whole table as plain text")
+    canvas.finishText()
     canvas.restoreInteraction(pos)
     expect(canvas.editor?.string == "Voltage", "cell editor and caret restore")
     expect(
@@ -1011,6 +1016,19 @@ import WebKit
       canvas.refreshTool()
       screen.layoutSubtreeIfNeeded()
       let actions = visibleViews(ChromeButton.self, in: sidebar).sorted { $0.tag < $1.tag }
+      owner.jumpToPage(2)
+      expect(sidebar.table.selectedRow == -1 && !actions[3].isEnabled && !actions[1].isEnabled,
+        "An unused sheet never targets the previous page for deletion or movement")
+      actions[0].performClick(nil)
+      expect(canvas.notebook.usedPages == 3 && sidebar.table.selectedRow == 2 && owner.page == 2,
+        "Add this page includes the visible blank sheet without moving earlier pages")
+      canvas.history.undo()
+      expect(canvas.notebook.usedPages == 2 && canvas.notebook.sourceIndex(on: 1) == 1,
+        "Undo adding the visible sheet preserves the original two PDF pages")
+      owner.jumpToPage(1)
+      expect(sidebar.table.selectedRow == 1 && actions[3].isEnabled,
+        "Returning to a used sheet enables actions for that page")
+      owner.jumpToPage(0)
       let frames = actions.map { $0.convert($0.bounds, to: sidebar) }
       let list = sidebar.table.enclosingScrollView!
       let listFrame = list.convert(list.bounds, to: sidebar)

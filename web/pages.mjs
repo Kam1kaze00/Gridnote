@@ -25,7 +25,11 @@ export function pageSidebar(panel, { jump, change }) {
     count = 0,
     drag = null;
   const buttons = panel.querySelectorAll("[data-action]");
-  for (const b of buttons) b.onclick = () => change(b.dataset.action, active);
+  for (const b of buttons) b.onclick = () => {
+    const action = b.dataset.action;
+    if (active < count) change(action, active);
+    else if (action === "insert") change("add", active);
+  };
   async function thumbnail(canvas, book, source, page) {
     const g = canvas.getContext("2d"),
       top = page * H,
@@ -93,7 +97,14 @@ export function pageSidebar(panel, { jump, change }) {
     }
     for (const b of rows.children)
       b.setAttribute("aria-current", String(Number(b.dataset.page) === active));
-    panel.querySelector('[data-action="up"]').disabled = active <= 0;
+    const used = active < count;
+    const insert = panel.querySelector('[data-action="insert"]');
+    const label = used ? "Insert page after" : "Add this page";
+    insert.title = label;
+    insert.setAttribute("aria-label", label);
+    insert.disabled = used ? count >= 99999 : active >= 99999;
+    panel.querySelector('[data-action="delete"]').disabled = !used;
+    panel.querySelector('[data-action="up"]').disabled = !used || active <= 0;
     panel.querySelector('[data-action="down"]').disabled = active + 1 >= count;
   }
   list.onscroll = paint;
@@ -103,8 +114,8 @@ export function pageSidebar(panel, { jump, change }) {
       count = pageCount(book);
       revision = book.revision;
     }
-    const next = Math.min(count - 1, page);
-    if (scroll || active !== next) {
+    const next = page;
+    if (next < count && (scroll || active !== next)) {
       if (
         next * 130 < list.scrollTop ||
         next * 130 + 130 > list.scrollTop + list.clientHeight
