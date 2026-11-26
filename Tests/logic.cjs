@@ -210,6 +210,24 @@ async function exportWhileSwitching(page) {
   }, bytes), 2);
 }
 
+async function partialImageImport(page) {
+  await page.click("#new");
+  await page.locator("#sheet").waitFor();
+  const valid = require("node:fs").readFileSync(path.join(__dirname, "fixtures/exercise.png"));
+  await page.setInputFiles("#imagefile", [
+    { name: "first.png", mimeType: "image/png", buffer: valid },
+    { name: "unreadable.png", mimeType: "image/png", buffer: Buffer.from("Incomplete photo") },
+    { name: "last.png", mimeType: "image/png", buffer: valid },
+  ]);
+  await page.locator("#notice").waitFor();
+  assert.match(await page.locator("#notice").textContent(), /unreadable\.png/);
+  await waitForStoredValue(page, async () => {
+    const s = await import("./store.mjs");
+    const saved = await s.loadRecord(await s.loadState("last"));
+    return saved?.book.objects.filter(o => o.content.image).length === 2;
+  });
+}
+
 async function imagesWhileSwitching(page) {
   await page.click("#new");
   await page.click("#files");
@@ -320,7 +338,7 @@ async function backupRecovery(page) {
     engine === "chromium" && process.env.BROWSER_BIN ? { executablePath: process.env.BROWSER_BIN } : {});
   try {
     const failures = [];
-    for (const check of [editHistory, lastPage, inheritedPaper, backupRecovery, editDuringPDFOpen, unusedPage, staleView, keyboardActions, previewClipboard, exportWhileSwitching, imagesWhileSwitching]) {
+    for (const check of [editHistory, lastPage, inheritedPaper, backupRecovery, editDuringPDFOpen, unusedPage, staleView, keyboardActions, previewClipboard, exportWhileSwitching, imagesWhileSwitching, partialImageImport]) {
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
       try {
         await page.goto(process.env.GRIDNOTE_URL);

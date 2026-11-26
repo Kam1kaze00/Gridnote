@@ -1929,7 +1929,19 @@ function insertion() {
 function importImages(files, { page = currentPage(), point = insertion(), camera = false } = {}) {
   if (!files.length) return;
   const task = (async () => {
-    for (const file of files) await insertImage(file, page, point, camera);
+    const failed = [];
+    for (const file of files) {
+      try {
+        await insertImage(file, page, point, camera);
+      } catch (error) {
+        failed.push({ name: file.name || "image", error });
+      }
+    }
+    if (failed.length) {
+      const first = failed[0];
+      const which = failed.length === 1 ? first.name : failed.length + " images, including " + first.name;
+      throw Error("Couldn’t add " + which + ". " + (first.error.message || "Please check the file."));
+    }
   })();
   pendingImageImports.add(task);
   return task.finally(() => pendingImageImports.delete(task));
