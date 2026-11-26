@@ -110,6 +110,18 @@ const assert = require("node:assert/strict");
     ]) {
       await page.setViewportSize(size);
       await page.tap("#tool-brush");
+      const tips = page.locator("#popover .writing-tips button");
+      const boxes = await tips.evaluateAll(buttons => buttons.map(button => {
+        const {x, y, width, height} = button.getBoundingClientRect();
+        return {x, y, width, height};
+      }));
+      assert.equal(boxes.length, 6);
+      for (const [i, box] of boxes.entries()) {
+        assert(box.width >= 44 && box.height >= 44, "each tip has a full touch target");
+        assert.equal(box.x, boxes[i % 3].x);
+        assert.equal(box.y, boxes[i < 3 ? 0 : 3].y);
+      }
+      assert(boxes[3].y >= boxes[0].y + boxes[0].height);
       const p = await page.locator("#popover").boundingBox();
       assert(
         p.x >= 0 &&

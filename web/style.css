@@ -875,6 +875,7 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
   grid-template-columns: 1fr repeat(2, minmax(48px, 1fr));
   align-items: center;
 }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
+  .choices.writing-tips button,
   .choices.brush-finish button { min-height: 44px; }
 }
