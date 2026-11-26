@@ -295,6 +295,13 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     canvas.finishText()
     canvas.finishGesture()
     var order: [Int?] = Array(0..<canvas.notebook.usedPages).map { Optional($0) }
+    if action == "add" {
+      guard p >= order.count, p < 99999 else { return }
+      order.append(contentsOf: repeatElement(nil, count: p + 1 - order.count))
+      canvas.arrangePages(order, name: "Add Page")
+      jumpToPage(p)
+      return
+    }
     guard order.indices.contains(p) else { return }
     var target = p
     let name: String

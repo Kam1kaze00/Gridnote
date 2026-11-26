@@ -7,6 +7,7 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
   private var revision: UInt64?
   private var bookID: UUID?
   private var count = 0
+  private var currentPage = 0
   private var updating = false
   var thumbnail: ((Int) -> NSImage?)?
   var jump: ((Int) -> Void)?
@@ -94,13 +95,22 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
       cache.removeAllObjects()
       table.reloadData()
     }
-    let row = min(max(0, current), count - 1)
-    if row >= 0 && table.selectedRow != row {
-      table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-      table.scrollRowToVisible(row)
+    currentPage = current
+    let used = (0..<count).contains(current)
+    table.allowsEmptySelection = !used
+    if used && table.selectedRow != current {
+      table.selectRowIndexes(IndexSet(integer: current), byExtendingSelection: false)
+      table.scrollRowToVisible(current)
+    } else if !used && table.selectedRow >= 0 {
+      table.deselectAll(nil)
     }
-    buttons[1].isEnabled = row > 0
-    buttons[2].isEnabled = row + 1 < count
+    let addLabel = used ? "Insert page after" : "Add this page"
+    buttons[0].toolTip = addLabel
+    buttons[0].setAccessibilityLabel(addLabel)
+    buttons[0].isEnabled = used ? count < 99999 : current >= 0 && current < 99999
+    buttons[1].isEnabled = used && current > 0
+    buttons[2].isEnabled = used && current + 1 < count
+    buttons[3].isEnabled = used
   }
   func numberOfRows(in tableView: NSTableView) -> Int { count }
   func tableView(_ tableView: NSTableView, viewFor col: NSTableColumn?, row: Int) -> NSView? {
@@ -155,7 +165,9 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     if !updating, table.selectedRow >= 0 { jump?(table.selectedRow) }
   }
   @objc private func performAction(_ b: NSButton) {
-    if table.selectedRow >= 0 {
+    if b.tag == 0 && currentPage >= count {
+      action?("add", currentPage)
+    } else if table.selectedRow >= 0 {
       action?(["insert", "up", "down", "delete"][b.tag], table.selectedRow)
     }
   }

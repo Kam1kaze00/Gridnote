@@ -404,19 +404,22 @@ function serializeNotebookSwitch(action) {
     return change;
   };
 }
+const pendingImageImports = new Set();
+async function finishOutgoingNotebook() {
+  // A picker or paste belongs to the notebook where the files were accepted.
+  // The old page stays editable until both its imports and its last edit are saved.
+  do {
+    if (pendingImageImports.size) await Promise.allSettled([...pendingImageImports]);
+    finishText();
+    finishGesture();
+    recordView(true);
+    await flush();
+  } while (pendingImageImports.size || dirty || editing || gesture);
+}
 async function openBook(next, name, { state, storedRevision = null, recovered = false, pdf } = {}) {
   const nextPDF = pdf ?? (next.sourcePDF ? await readPDF(from64(next.sourcePDF)) : null);
   try {
-    if (book) {
-      // Keep the old notebook editable while the new file loads. Commit through
-      // the last edit made before the handoff, including edits during a save.
-      do {
-        finishText();
-        finishGesture();
-        recordView(true);
-        await flush();
-      } while (dirty || editing || gesture);
-    }
+    if (book) await finishOutgoingNotebook();
   } catch (error) {
     if (nextPDF) await nextPDF.destroy();
     throw error;
@@ -441,8 +444,12 @@ async function openBook(next, name, { state, storedRevision = null, recovered = 
   undo = [];
   redo = [];
   endTransient();
-  selection = new Set(state?.selection || []);
-  tool = toolNames[state?.tool] ? state.tool : "brush";
+  const savedSelection = new Set(Array.isArray(state?.selection) ? state.selection : []);
+  selection = new Set();
+  if (savedSelection.size) {
+    for (const object of book.objects) if (savedSelection.has(object.id)) selection.add(object.id);
+  }
+  tool = Object.hasOwn(toolNames, state?.tool) ? state.tool : "brush";
   zoom = clamp(Number(state?.zoom) || 1, 1, 4);
   pages = Math.max(2, pageCount(book) + 1, Math.ceil((state?.y || 0) / H) + 2);
   $("welcome").hidden = true;
@@ -466,7 +473,7 @@ async function openBook(next, name, { state, storedRevision = null, recovered = 
       (x) => x.id === state.editing && kind(x) === "text",
     );
     if (o) {
-      if (o.table) startCell(o, state.cell ?? 0, state.caret, state.length);
+      if (o.table) startCell(o, state.cell, state.caret, state.length);
       else startText(o.frame[0], o, state.caret, state.length);
     }
   }
@@ -476,7 +483,10 @@ async function openBook(next, name, { state, storedRevision = null, recovered = 
   refresh();
   draw();
   recordView(true);
-  if (previousPDF) run(() => previousPDF.destroy());
+  if (previousPDF) run(async () => {
+    if (activeExport?.source === previousPDF) await activeExport.render.catch(() => {});
+    await previousPDF.destroy();
+  });
 }
 const openStored = serializeNotebookSwitch(async (id) => {
   const loaded = await loadRecord(id);
@@ -508,10 +518,16 @@ function jumpPage(p) {
 function organizePage(action, p, to) {
   finishText();
   finishGesture();
-  const order = Array.from({ length: pageCount(book) }, (_, i) => i);
+  const count = pageCount(book);
+  const order = Array.from({ length: count }, (_, i) => i);
   let target = p;
-  if (!Number.isInteger(p) || p < 0 || p >= order.length) return;
-  if (action === "insert") {
+  if (!Number.isInteger(p) || p < 0 || p >= 99999) return;
+  if (action === "add") {
+    if (p < order.length) return;
+    order.length = p + 1;
+    order.fill(null, count);
+  } else if (p >= order.length) return;
+  else if (action === "insert") {
     if (order.length >= 99999) return;
     order.splice(++target, 0, null);
   } else if (action === "delete") {
@@ -527,7 +543,7 @@ function organizePage(action, p, to) {
     label:
       action === "delete"
         ? "Delete page"
-        : action === "insert"
+        : action === "add" ? "Add page" : action === "insert"
           ? "Insert page"
           : "Move page",
   });
@@ -1844,6 +1860,7 @@ function placeCaretAtTap(p) {
   }
 }
 function startCell(o, i, caret, length = 0) {
+  if (!Number.isInteger(i) || i < 0 || i >= o.table.cells.length) return;
   const frame = cellFrame(o, i),
     style = textFormat(o, i),
     proxy = {
@@ -1909,8 +1926,27 @@ function insertion() {
     view.scrollTop / scale + Math.min(50, (view.clientHeight / scale) * 0.15),
   ];
 }
-async function insertImage(file, onPage = null, dropPoint = null) {
-  const notebookID = book.id;
+function importImages(files, { page = currentPage(), point = insertion(), camera = false } = {}) {
+  if (!files.length) return;
+  const task = (async () => {
+    const failed = [];
+    for (const file of files) {
+      try {
+        await insertImage(file, page, point, camera);
+      } catch (error) {
+        failed.push({ name: file.name || "image", error });
+      }
+    }
+    if (failed.length) {
+      const first = failed[0];
+      const which = failed.length === 1 ? first.name : failed.length + " images, including " + first.name;
+      throw Error("Couldn’t add " + which + ". " + (first.error.message || "Please check the file."));
+    }
+  })();
+  pendingImageImports.add(task);
+  return task.finally(() => pendingImageImports.delete(task));
+}
+async function insertImage(file, page, point, camera) {
   const url = URL.createObjectURL(file),
     img = new Image();
   try {
@@ -1942,10 +1978,8 @@ async function insertImage(file, onPage = null, dropPoint = null) {
         throw Error("The image is too large to decode on this device.");
       data = bytes64(new Uint8Array(await blob.arrayBuffer()));
     }
-    if (book?.id !== notebookID) return;
     const object = { id: uid(), frame: [[0, 0], natural], content: { image: { _0: data } } };
-    const page = onPage ?? (dropPoint ? Math.max(0, Math.floor(dropPoint[1] / H)) : currentPage());
-    placeImage(object, dropPoint ?? insertion(), page, onPage !== null);
+    placeImage(object, point, page, camera);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -2027,14 +2061,17 @@ function isEntry(target) {
     target?.isContentEditable
   );
 }
+function notebookClipboard(event) {
+  return book && $("welcome").hidden && !document.querySelector("dialog[open]") && !isEntry(event.target);
+}
 document.addEventListener("copy", (e) => {
-  if (book && !isEntry(e.target)) copySelection(e);
+  if (notebookClipboard(e)) copySelection(e);
 });
 document.addEventListener("cut", (e) => {
-  if (book && !document.body.classList.contains("launching") && !isEntry(e.target) && copySelection(e)) deleteSelection();
+  if (notebookClipboard(e) && copySelection(e)) deleteSelection();
 });
 document.addEventListener("paste", (e) => {
-  if (!book || document.body.classList.contains("launching") || isEntry(e.target)) return;
+  if (!notebookClipboard(e)) return;
   const data = e.clipboardData;
   const own = data.getData("application/x-gridnote-objects");
   if (own) {
@@ -2048,9 +2085,7 @@ document.addEventListener("paste", (e) => {
     .filter(Boolean);
   if (images.length) {
     e.preventDefault();
-    run(async () => {
-      for (const img of images) await insertImage(img);
-    });
+    run(() => importImages(images));
     return;
   }
   const str = data.getData("text/plain");
@@ -2060,6 +2095,8 @@ document.addEventListener("paste", (e) => {
       pasteCopies(clipObjects);
     else {
       const [value, code] = recognizeCode(str);
+      finishText();
+      finishGesture();
       startText(insertion());
       if (code) editing.object.codeStyle = true;
       editor.value = value;
@@ -2073,9 +2110,11 @@ sheet.ondrop = (e) => {
   e.preventDefault();
   const at = point(e), files = Array.from(e.dataTransfer.files);
   run(async () => {
-    for (const file of files) {
-      if (file.type.startsWith("image/")) await insertImage(file, null, at);
-      else await importBook(file);
+    for (let index = 0; index < files.length;) {
+      const start = index;
+      while (index < files.length && files[index].type.startsWith("image/")) index++;
+      if (index > start) await importImages(files.slice(start, index), { page: Math.max(0, Math.floor(at[1] / H)), point: at });
+      else await importBook(files[index++]);
     }
   });
 };
@@ -2679,10 +2718,7 @@ function menuAction(label, action, enabled = true) {
 }
 let lastNotebookID, pausedView;
 const showStartScreen = serializeNotebookSwitch(async () => {
-  finishText();
-  finishGesture();
-  recordView(true);
-  await flush();
+  await finishOutgoingNotebook();
   pausedView = positionState();
   lastNotebookID = book.id;
   closePop();
@@ -2925,12 +2961,11 @@ const importBook = serializeNotebookSwitch(async (file) => {
   touchSave();
   await flush();
 });
-let busyPDF = false;
+let activeExport = null;
 async function pdfAction(preview) {
-  if (busyPDF) return;
+  if (activeExport) return;
   finishText();
   finishGesture();
-  busyPDF = true;
   const startPage = currentPage();
   const notebookID = book.id;
   const filename = title + (book.sourcePDF ? " - Annotated" : "") + ".pdf";
@@ -2938,7 +2973,8 @@ async function pdfAction(preview) {
     old = b.textContent;
   $("preview").disabled = $("export").disabled = true;
   try {
-    const bytes = await makePDF(book, source, (p, n) => (b.textContent = p + "/" + n));
+    activeExport = { source, render: makePDF(book, source, (p, n) => (b.textContent = p + "/" + n)) };
+    const bytes = await activeExport.render;
     const file = new File([bytes], filename, { type: "application/pdf" });
     if (!preview) {
       download(file, file.name);
@@ -2959,7 +2995,7 @@ async function pdfAction(preview) {
     $("pdfmodal").showModal();
     await updatePreview();
   } finally {
-    busyPDF = false;
+    activeExport = null;
     b.textContent = old;
     $("preview").disabled = $("export").disabled = false;
   }
@@ -3072,7 +3108,16 @@ async function updatePreview() {
 }
 document.addEventListener("keydown", (e) => {
   if (document.body.classList.contains("launching")) return;
+  if (!book || document.querySelector("dialog[open]")) return;
   const mod = e.metaKey || e.ctrlKey;
+  const key = e.key.toLowerCase();
+  const notebookShortcut = e.target === editor || !isEntry(e.target);
+  if (mod && !e.altKey && !e.shiftKey && notebookShortcut && (key === "s" || key === "p")) {
+    e.preventDefault();
+    if (key === "s") run(flush);
+    else run(() => pdfAction(true));
+    return;
+  }
   if (e.key === "Escape" && !pop.hidden) {
     e.preventDefault();
     closePop();
@@ -3094,30 +3139,21 @@ document.addEventListener("keydown", (e) => {
     }
     return;
   }
-  if (document.querySelector("dialog[open]")) return;
-  if (!book) return;
   if (mod) {
-    const k = e.key.toLowerCase();
-    if (k === "s") {
-      e.preventDefault();
-      run(flush);
-    } else if (k === "z") {
+    if (key === "z") {
       e.preventDefault();
       stepHistory(e.shiftKey ? "redo" : "undo");
-    } else if (k === "y") {
+    } else if (key === "y") {
       e.preventDefault();
       stepHistory("redo");
-    } else if (k === "0") {
+    } else if (key === "0") {
       e.preventDefault();
       setZoom(1);
-    } else if (k === "a") {
+    } else if (key === "a") {
       e.preventDefault();
       pickTool("selector");
       selection = new Set(book.objects.filter(inFilter).map((o) => o.id));
       refresh();
-    } else if (k === "p") {
-      e.preventDefault();
-      run(() => pdfAction(true));
     }
     return;
   }
@@ -3132,6 +3168,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     pickTool(keys[e.code]);
   } else if (e.code === "Space") {
+    if (e.target.closest?.("button,a[href]")) return;
     e.preventDefault();
     space = true;
   } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -3287,7 +3324,7 @@ $("imagefile").onchange = () =>
   run(async () => {
     const fs = [...$("imagefile").files];
     $("imagefile").value = "";
-    for (const f of fs) await insertImage(f);
+    await importImages(fs);
   });
 $("addimage").onclick = () => imageMenu();
 $("undo").onmousedown = $("redo").onmousedown = (e) => e.preventDefault();
@@ -3352,18 +3389,20 @@ function imageMenu() {
   openPop($("addimage"), "image", "Add image", () => {
     if (cameraSupported())
       menuAction("Take photo…", async () => {
-        const page = currentPage(),
-          photo = await capturePhoto();
-        if (photo) await insertImage(photo, page);
+        const id = book.id, page = currentPage(), point = insertion();
+        const photo = await capturePhoto();
+        if (photo && book.id === id && $("welcome").hidden) await importImages([photo], { page, point, camera: true });
       });
     menuAction("Choose an image…", () => $("imagefile").click());
     if (navigator.clipboard?.read)
       menuAction("Paste screenshot", async () => {
+        const id = book.id, page = currentPage(), point = insertion();
         const items = await navigator.clipboard.read();
         for (const item of items) {
           const type = item.types.find((t) => t.startsWith("image/"));
           if (type) {
-            await insertImage(await item.getType(type));
+            const blob = await item.getType(type);
+            if (book.id === id && $("welcome").hidden) await importImages([blob], { page, point });
             return;
           }
         }
