@@ -45,7 +45,6 @@ import {
   transform,
   cleared,
   validate,
-  deletePage,
 } from "./engine.mjs";
 import {
   loadState,
@@ -119,7 +118,8 @@ let formatCell = null;
 let editing = null,
   undo = [],
   redo = [],
-  lastRevision = 0,
+  lastRevision = null,
+  repairPending = false,
   dirty = false,
   saveTimer,
   stateTimer,
@@ -270,9 +270,10 @@ function flush() {
     const snap = snapshot(),
       name = title;
     try {
-      const revision = await saveRecord(snap, name, lastRevision);
+      const revision = await saveRecord(snap, name, lastRevision, repairPending);
       if (snap.id === book.id) {
         lastRevision = revision;
+        repairPending = false;
         dirty = book.revision !== revision;
         error = "";
         updateStatus();
@@ -331,11 +332,14 @@ function endTransient() {
   panFrame = 0;
   panRemainder = 0;
 }
+function recordUndo(entry) {
+  undo.push(entry);
+  if (undo.length > historyLimit) undo.shift();
+  redo.length = 0;
+}
 function setObjects(next, name, previous = book.objects) {
   if (next === previous) return;
-  undo.push({ objects: previous, label: name });
-  if (undo.length > historyLimit) undo.shift();
-  redo = [];
+  recordUndo({ objects: previous, label: name });
   book = { ...book, objects: next };
   touchSave();
   resize();
@@ -346,22 +350,29 @@ function changePaper(design) {
     defaultPaper: book.defaultPaper,
     pagePaper: book.pagePaper,
   };
-  undo.push({ paper: previous, label: "Change paper" });
-  redo = [];
+  const defaults = book.defaultPaper || defaultPaper;
+  const matches = value => value?.ruling === design.ruling && value.tint === design.tint;
   if (paperScope === "default") {
+    if (matches(defaults)) return;
     book = { ...book, defaultPaper: design };
   } else {
+    const page = currentPage(), prior = book.pagePaper?.[page];
+    const inherit = matches(defaults);
+    if (inherit ? !prior : matches(prior)) return;
     const overrides = { ...book.pagePaper };
-    overrides[currentPage()] = design;
+    if (inherit) delete overrides[page];
+    else overrides[page] = design;
     book = { ...book, pagePaper: overrides };
   }
+  recordUndo({ paper: previous, label: "Change paper" });
   touchSave();
   refresh();
   draw();
 }
-function stepHistory(from, to) {
+function stepHistory(direction) {
   finishText();
   finishGesture();
+  const [from, to] = direction === "redo" ? [redo, undo] : [undo, redo];
   const entry = from.pop();
   if (!entry) return;
   if (entry.document) {
@@ -383,7 +394,7 @@ function stepHistory(from, to) {
   resize();
   refresh();
 }
-async function openBook(next, name, state = null, stored = null) {
+async function openBook(next, name, state = null, stored = null, recovered = false) {
   if (book) {
     finishText();
     finishGesture();
@@ -411,7 +422,8 @@ async function openBook(next, name, state = null, stored = null) {
   resetImageCache();
   book = next;
   title = name;
-  lastRevision = stored ?? next.revision;
+  lastRevision = stored;
+  repairPending = recovered;
   dirty = false;
   error = "";
   undo = [];
@@ -459,7 +471,7 @@ async function openStored(id) {
     state = JSON.parse(localStorage.getItem("gridnote-view-" + id));
   } catch {}
   state ??= await loadState("view-" + id);
-  await openBook(loaded.book, loaded.title, state, loaded.storedRevision);
+  await openBook(loaded.book, loaded.title, state, loaded.storedRevision, loaded.recovered);
   await saveState("last", id);
   if (loaded.recovered) {
     touchSave();
@@ -496,7 +508,7 @@ function organizePage(action, p, to) {
     if (target < 0 || target >= order.length || target === p) return;
     order.splice(target, 0, order.splice(p, 1)[0]);
   }
-  undo.push({
+  recordUndo({
     document: book,
     label:
       action === "delete"
@@ -505,7 +517,6 @@ function organizePage(action, p, to) {
           ? "Insert page"
           : "Move page",
   });
-  redo = [];
   book = arrangedPages(book, order);
   selection.clear();
   pdfCache.clear();
@@ -2802,8 +2813,9 @@ async function fileMenu() {
         );
       });
       pop.append($el("hr"));
-      menuAction("Undo", () => stepHistory(undo, redo), undo.length > 0);
-      menuAction("Redo", () => stepHistory(redo, undo), redo.length > 0);
+      const liveEdit = editing && editor.value !== editing.object.content.text._0;
+      menuAction("Undo", () => stepHistory("undo"), undo.length > 0 || liveEdit);
+      menuAction("Redo", () => stepHistory("redo"), redo.length > 0 && !liveEdit);
       menuAction("Clear writing on this page", () => clearWriting("handwriting", currentPage()));
       menuAction("Remove typed text…", () =>
         openPop($("files"), "clear", "Remove typed text", () => {
@@ -2814,20 +2826,7 @@ async function fileMenu() {
       menuAction("Clear writing on all pages", () => clearWriting("handwriting"));
       menuAction(
         "Delete this page",
-        () => {
-          finishText();
-          finishGesture();
-          const next = deletePage(book, currentPage());
-          if (next === book) return;
-          undo.push({ document: book, label: "Delete page" });
-          redo = [];
-          book = next;
-          selection.clear();
-          pdfCache.clear();
-          touchSave();
-          resize();
-          refresh();
-        },
+        () => organizePage("delete", currentPage()),
         currentPage() < pageCount(book),
       );
       if (document.fullscreenEnabled)
@@ -3094,10 +3093,10 @@ document.addEventListener("keydown", (e) => {
       run(flush);
     } else if (k === "z") {
       e.preventDefault();
-      e.shiftKey ? stepHistory(redo, undo) : stepHistory(undo, redo);
+      stepHistory(e.shiftKey ? "redo" : "undo");
     } else if (k === "y") {
       e.preventDefault();
-      stepHistory(redo, undo);
+      stepHistory("redo");
     } else if (k === "0") {
       e.preventDefault();
       setZoom(1);
@@ -3290,13 +3289,13 @@ $("undo").onclick = () => {
   if (editing) {
     editor.focus();
     document.execCommand("undo");
-  } else stepHistory(undo, redo);
+  } else stepHistory("undo");
 };
 $("redo").onclick = () => {
   if (editing) {
     editor.focus();
     document.execCommand("redo");
-  } else stepHistory(redo, undo);
+  } else stepHistory("redo");
 };
 $("saved").onclick = () => {
   if (error) notify(error);

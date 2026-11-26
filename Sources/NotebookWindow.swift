@@ -865,7 +865,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
   @objc func clearPageText(_ sender: Any?) { canvas.clearWriting(.typedText, on: page) }
   @objc func clearTypedText(_ sender: Any?) { canvas.clearWriting(.typedText) }
   @objc func clearAll(_ sender: Any?) { canvas.clearWriting(.handwriting) }
-  @objc func deletePage(_ sender: Any?) { canvas.deletePage(page) }
+  @objc func deletePage(_ sender: Any?) { organize("delete", page: page) }
 
   private func updateTools() {
     guard palette != nil, fitButton != nil else { return }

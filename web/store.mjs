@@ -30,7 +30,7 @@ export async function lastNotebookInfo() {
   if (!id) return null;
   const cached = await loadState("last-title");
   if (cached?.id === id) return cached;
-  const previous = await get("books", id);
+  const previous = await get("books", id) ?? await get("recovery", id);
   return previous ? { id, title: previous.title } : null;
 }
 export async function saveState(key, value) {
@@ -43,7 +43,7 @@ const known = new Set();
 function assetKey(id, field) {
   return id + "/" + field;
 }
-export async function saveRecord(book, title, previousRevision) {
+export async function saveRecord(book, title, previousRevision, repairing = false) {
   const db = await database,
     tx = db.transaction(["books", "recovery", "assets", "state"], "readwrite");
   const done = finish(tx);
@@ -74,7 +74,7 @@ export async function saveRecord(book, title, previousRevision) {
   );
   const files = tx.objectStore("books");
   const prior = await request(files.get(book.id));
-  if (prior && prior.book.revision !== previousRevision) {
+  if ((prior?.book?.revision ?? null) !== previousRevision) {
     tx.abort();
     try {
       await done;
@@ -83,8 +83,9 @@ export async function saveRecord(book, title, previousRevision) {
       "This notebook was changed in another window. Download an editable copy before reopening it.",
     );
   }
-  if (prior) tx.objectStore("recovery").put(prior, book.id);
-  files.put({ book: record, title, updated: Date.now() }, book.id);
+  const saved = { book: record, title, updated: Date.now() };
+  if (repairing || prior) tx.objectStore("recovery").put(repairing ? saved : prior, book.id);
+  files.put(saved, book.id);
   tx.objectStore("state").put(book.id, "last");
   tx.objectStore("state").put({ id: book.id, title }, "last-title");
   await done;
@@ -114,17 +115,23 @@ async function expand(record) {
 }
 export async function loadRecord(id) {
   const current = await get("books", id);
-  try {
-    return await expand(current);
-  } catch (error) {
-    const backup = await expand(await get("recovery", id));
-    if (!backup) throw error;
-    return {
-      ...backup,
-      recovered: true,
-      storedRevision: current.book.revision,
-    };
+  let problem;
+  if (current) {
+    try {
+      const record = await expand(current);
+      return { ...record, storedRevision: record.book.revision };
+    } catch (error) { problem = error; }
   }
+  const backup = await expand(await get("recovery", id));
+  if (!backup) {
+    if (problem) throw problem;
+    return null;
+  }
+  const storedRevision = current?.book?.revision ?? null;
+  // Advance beyond both versions, even when the backup is several edits older.
+  // Other open windows must detect the repair as a new change.
+  const revision = Math.max(backup.book.revision, Number.isSafeInteger(storedRevision) ? storedRevision : 0);
+  return { ...backup, book: { ...backup.book, revision }, storedRevision, recovered: true };
 }
 export async function library() {
   const db = await database,

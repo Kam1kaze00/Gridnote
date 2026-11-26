@@ -958,12 +958,17 @@ import WebKit
       table.transformed(from: .zero, offset: CGPoint(x: 0, y: 2 * paperSize.height))
     ]
     canvas.load(pageBook)
-    canvas.deletePage(1)
+    owner.jumpToPage(1)
+    owner.deletePage(nil)
     expect(
       canvas.notebook.sourcePageMap == [0, 2] && canvas.notebook.usedPages == 2,
       "page deletion shifts objects and PDF backgrounds")
     canvas.history.undo()
     expect(canvas.notebook.usedPages == 3, "undo restores deleted page")
+    owner.jumpToPage(2)
+    owner.deletePage(nil)
+    expect(owner.page == 1 && canvas.notebook.usedPages == 2, "Delete This Page lands on the remaining last page")
+    owner.jumpToPage(0)
     canvas.load(Notebook())
     canvas.chooseTool(.brush)
     stroke([(50, 85), (250, 85)])
