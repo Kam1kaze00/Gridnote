@@ -2129,38 +2129,69 @@ function closePop() {
     clearStudyHighlights();
     draw();
   }
+  popupAnchor?.setAttribute("aria-expanded", "false");
   pop.hidden = true;
   popupKind = "";
   popupAnchor = null;
 }
+const panelControls = "button, input, select, textarea, a[href]";
+function returnFromOptions() {
+  const anchor = popupAnchor;
+  closePop();
+  (anchor?.getClientRects().length && !anchor.disabled ? anchor : sheet).focus({preventScroll: true});
+}
+pop.addEventListener("keydown", event => {
+  if (event.key !== "Tab" || event.altKey || event.metaKey || event.ctrlKey) return;
+  const controls = [...pop.querySelectorAll(panelControls)]
+    .filter(el => !el.matches(":disabled") && el.tabIndex >= 0 && el.getClientRects().length);
+  const index = controls.indexOf(document.activeElement);
+  const next = controls[index + (event.shiftKey ? -1 : 1)];
+  event.preventDefault();
+  if (next) next.focus();
+  else returnFromOptions();
+});
 function openPop(anchor, type, heading, build) {
+  const samePanel = !pop.hidden && popupAnchor === anchor && popupKind === type;
+  const previous = samePanel && pop.contains(document.activeElement) ? document.activeElement : null;
+  const label = el => el.getAttribute("aria-label") || el.textContent.trim();
+  const previousIndex = previous ? [...pop.querySelectorAll(panelControls)].indexOf(previous) : -1;
+  const scrollTop = samePanel ? pop.scrollTop : 0;
+  popupAnchor?.setAttribute("aria-expanded", "false");
   pop.dispatchEvent(new Event("panelclose"));
   pop.oninput = null;
   pop.replaceChildren();
-  if (heading) pop.append($el("h2", heading));
+  const title = $el("h2", heading);
+  title.id = "popover-heading";
+  pop.append(title);
   popupKind = type;
   popupAnchor = anchor;
   build();
   pop.hidden = false;
+  anchor.setAttribute("aria-expanded", "true");
   positionPop(anchor);
+  pop.scrollTop = scrollTop;
+  const replacement = pop.querySelectorAll(panelControls)[previousIndex];
+  if (replacement && previous && label(replacement) === label(previous)) replacement.focus({preventScroll: true});
+  else if (!samePanel || previous) pop.focus({preventScroll: true});
 }
 function positionPop(anchor) {
-  const r = anchor.getBoundingClientRect(),
-    pw = pop.offsetWidth,
-    ph = pop.offsetHeight;
-  pop.style.left = clamp(r.left, 5, innerWidth - pw - 5) + "px";
-  pop.style.top =
-    (r.bottom + ph + 6 < innerHeight
-      ? r.bottom + 4
-      : Math.max(5, r.top - ph - 5)) + "px";
+  const r = anchor.getBoundingClientRect();
+  const below = Math.max(0, innerHeight - r.bottom - 9), above = Math.max(0, r.top - 9);
+  const desired = Math.min(pop.scrollHeight + 2, innerHeight * 0.85);
+  const useBelow = desired <= below || below >= above;
+  pop.style.setProperty("--panel-room", (useBelow ? below : above) + "px");
+  pop.style.left = clamp(r.left, 5, innerWidth - pop.offsetWidth - 5) + "px";
+  pop.style.top = (useBelow ? r.bottom + 4 : Math.max(5, r.top - pop.offsetHeight - 4)) + "px";
 }
 function choices(label, items, value, select) {
   const row = $el("div");
   row.className = "choices";
-  if (label === "Brush finish") {
-    row.classList.add("brush-finish");
+  if (label) {
     row.setAttribute("role", "group");
     row.setAttribute("aria-label", label);
+  }
+  if (label === "Brush finish") {
+    row.classList.add("brush-finish");
     row.append($el("small", "Finish"));
   } else if (label) pop.append($el("small", label));
   if (label === "Writing tip") row.classList.add("writing-tips");
@@ -3089,22 +3120,31 @@ $("pdfmodal").addEventListener("close", () => {
 async function updatePreview() {
   const token = ++previewEpoch, n = pdfIndex, doc = pdfPreview;
   if (!doc) return;
+  const shown = $("pdfcanvas"), message = $("pdfmessage");
+  shown.hidden = true;
+  message.textContent = "Rendering page " + (n + 1) + "…";
+  message.hidden = false;
+  $("pdfcount").textContent = "";
+  $("pdfprev").disabled = n === 0;
+  $("pdfnext").disabled = n === doc.numPages - 1;
   let canvas;
   try {
     canvas = await pdfBitmap(doc, n,
       Math.min(1450, (innerWidth - 30) * Math.min(2, devicePixelRatio || 1)));
   } catch (error) {
-    if (token === previewEpoch) throw error;
+    if (token === previewEpoch) {
+      message.textContent = "Preview unavailable. You can still save this PDF.";
+      throw error;
+    }
     return;
   }
   if (token !== previewEpoch) return;
-  const shown = $("pdfcanvas");
   shown.width = canvas.width;
   shown.height = canvas.height;
   shown.getContext("2d").drawImage(canvas, 0, 0);
-  $("pdfcount").textContent = n + 1 + " / " + pdfPreview.numPages;
-  $("pdfprev").disabled = n === 0;
-  $("pdfnext").disabled = n === pdfPreview.numPages - 1;
+  message.hidden = true;
+  shown.hidden = false;
+  $("pdfcount").textContent = n + 1 + " / " + doc.numPages;
 }
 document.addEventListener("keydown", (e) => {
   if (document.body.classList.contains("launching")) return;
@@ -3120,8 +3160,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape" && !pop.hidden) {
     e.preventDefault();
-    closePop();
-    sheet.focus({ preventScroll:true });
+    returnFromOptions();
     return;
   }
   if (isEntry(e.target)) {
@@ -3285,6 +3324,10 @@ for (const [id, [label, key]] of Object.entries(toolNames)) {
   b.append(mark, name);
   if (key) b.append($el("kbd", key));
   $("toolset").append(b);
+}
+for (const trigger of [ ...$("toolset").children, ...["files", "settings", "paper", "selection", "addimage"].map($) ]) {
+  trigger.setAttribute("aria-controls", "popover");
+  trigger.setAttribute("aria-expanded", "false");
 }
 for (const [i, c] of inks.entries()) {
   const b = button(

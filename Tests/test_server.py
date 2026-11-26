@@ -1,7 +1,9 @@
 import io
 import json
+import socket
 import sys
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -9,6 +11,11 @@ import study_server
 
 
 class StudyAPI(unittest.TestCase):
+    def test_parallel_startup_connections_can_wait_for_the_editor(self):
+        with study_server.StudyServer(("127.0.0.1", 0), study_server.StudyHandler) as server, ExitStack() as clients:
+            for _ in range(16):
+                clients.enter_context(socket.create_connection(server.server_address, timeout=2))
+
     def test_selected_text_payload_and_output(self):
         fragment = "return x * x"
         response = {"output": [{"type": "reasoning"}, {"type": "message", "content": [

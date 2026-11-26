@@ -43,6 +43,11 @@ def explanation(text, kind, api_key, image=None):
     return answer
 
 
+class StudyServer(ThreadingHTTPServer):
+    # Browsers fetch the editor modules and offline assets in parallel at launch.
+    request_queue_size = max(64, ThreadingHTTPServer.request_queue_size)
+
+
 class StudyHandler(SimpleHTTPRequestHandler):
     def reply(self, status, **fields):
         body = json.dumps(fields).encode()
@@ -95,8 +100,9 @@ def main():
     args = parser.parse_args()
     if not (args.site / "index.html").is_file():
         parser.error("Build the standalone site or supply its directory with --site.")
-    print("Gridnote is available at http://127.0.0.1:8765", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", 8765), partial(StudyHandler, directory=str(args.site))).serve_forever()
+    with StudyServer(("127.0.0.1", 8765), partial(StudyHandler, directory=str(args.site))) as server:
+        print("Gridnote is available at http://127.0.0.1:8765", flush=True)
+        server.serve_forever()
 
 
 if __name__ == "__main__":

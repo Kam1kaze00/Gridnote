@@ -3,13 +3,28 @@ import AppKit
 final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
   static let openWidth: CGFloat = 136
   let table = NSTableView()
-  private let cache = NSCache<NSNumber, NSImage>()
-  private var revision: UInt64?
-  private var bookID: UUID?
+  private final class Preview: NSObject {
+    let paper: PaperDesign
+    let source: Int?
+    let originalScale: Bool
+    let objects: [NoteObject]
+    let image: NSImage
+    var revision: UInt64
+    init(book: Notebook, page: Int, objects: [NoteObject], image: NSImage) {
+      paper = book.paper(on: page)
+      source = book.sourceIndex(on: page)
+      originalScale = book.originalPDFScale == true
+      revision = book.revision
+      self.objects = objects
+      self.image = image
+    }
+  }
+  private let cache = NSCache<NSNumber, Preview>()
+  private var notebook: Notebook?
   private var count = 0
   private var currentPage = 0
   private var updating = false
-  var thumbnail: ((Int) -> NSImage?)?
+  var thumbnail: ((Int, [NoteObject]) -> NSImage?)?
   var jump: ((Int) -> Void)?
   var action: ((String, Int) -> Void)?
   var reorder: ((Int, Int) -> Void)?
@@ -19,7 +34,7 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     super.init(frame: frame)
     wantsLayer = true
     layer?.backgroundColor = chromeToolbar.cgColor
-    cache.countLimit = 96
+    cache.countLimit = 24
     let col = NSTableColumn(identifier: .init("page"))
     col.minWidth = 90
     col.resizingMask = .autoresizingMask
@@ -84,16 +99,35 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
   }
   required init?(coder: NSCoder) { nil }
+  func resetNotebook() {
+    notebook = nil
+    cache.removeAllObjects()
+  }
   func update(_ book: Notebook, current: Int) {
-    guard !isHidden else { return }
+    guard !isHidden else {
+      if notebook != nil { resetNotebook() }
+      return
+    }
     updating = true
     defer { updating = false }
-    if revision != book.revision || bookID != book.id || count != book.usedPages {
-      revision = book.revision
-      bookID = book.id
+    let newBook = notebook?.id != book.id
+    if newBook || notebook?.revision != book.revision {
+      let previousCount = count
+      if newBook { cache.removeAllObjects() }
+      notebook = book
       count = book.usedPages
-      cache.removeAllObjects()
-      table.reloadData()
+      if newBook || previousCount != count {
+        table.reloadData()
+      } else {
+        let visible = table.rows(in: table.visibleRect)
+        if visible.location != NSNotFound {
+          for row in visible.location..<NSMaxRange(visible) {
+            if let cell = table.view(atColumn: 0, row: row, makeIfNecessary: false) as? NSTableCellView {
+              cell.imageView?.image = image(for: row)
+            }
+          }
+        }
+      }
     }
     currentPage = current
     let used = (0..<count).contains(current)
@@ -113,21 +147,32 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
     buttons[3].isEnabled = used
   }
   func numberOfRows(in tableView: NSTableView) -> Int { count }
+  private func image(for row: Int) -> NSImage? {
+    guard let book = notebook else { return nil }
+    let key = NSNumber(value: row)
+    let cached = cache.object(forKey: key)
+    if let cached, cached.revision == book.revision { return cached.image }
+    let area = CGRect(origin: CGPoint(x: 0, y: CGFloat(row) * paperSize.height), size: paperSize)
+    let objects = book.objects.filter { $0.frame.intersects(area) }
+    if let cached, cached.paper == book.paper(on: row), cached.source == book.sourceIndex(on: row),
+       cached.originalScale == (book.originalPDFScale == true), cached.objects == objects {
+      cached.revision = book.revision
+      return cached.image
+    }
+    guard let result = thumbnail?(row, objects) else { return nil }
+    cache.setObject(Preview(book: book, page: row, objects: objects, image: result), forKey: key)
+    return result
+  }
   func tableView(_ tableView: NSTableView, viewFor col: NSTableColumn?, row: Int) -> NSView? {
     let image = NSImageView()
-    let key = NSNumber(value: row)
-    if let cached = cache.object(forKey: key) {
-      image.image = cached
-    } else if let img = thumbnail?(row) {
-      cache.setObject(img, forKey: key)
-      image.image = img
-    }
+    image.image = self.image(for: row)
     image.imageScaling = .scaleProportionallyUpOrDown
     image.heightAnchor.constraint(equalToConstant: 104).isActive = true
     let label = chromeLabel(String(row + 1), size: 11)
     let stack = chromeStack([image, label], spacing: 2, horizontal: false)
     stack.alignment = .centerX
     let cell = NSTableCellView()
+    cell.imageView = image
     cell.addSubview(stack)
     NSLayoutConstraint.activate([
       stack.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
@@ -174,7 +219,7 @@ final class PageSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension PaperRenderer {
-  func thumbnail(_ book: Notebook, page: Int) -> NSImage? {
+  func thumbnail(_ book: Notebook, page: Int, objects: [NoteObject]) -> NSImage? {
     let w = 158
     let h = 224
     guard
@@ -185,11 +230,10 @@ extension PaperRenderer {
     let top = CGFloat(page) * paperSize.height
     c.scaleBy(x: CGFloat(w) / paperSize.width, y: -CGFloat(h) / paperSize.height)
     c.translateBy(x: 0, y: -top - paperSize.height)
-    let area = CGRect(origin: CGPoint(x: 0, y: top), size: paperSize)
     draw(
       page: page, design: book.paper(on: page), sourceIndex: book.sourceIndex(on: page),
       originalScale: book.originalPDFScale == true, context: c)
-    for o in book.objects where o.frame.intersects(area) { draw(o, context: c) }
+    for o in objects { draw(o, context: c) }
     return c.makeImage().map { NSImage(cgImage: $0, size: CGSize(width: 79, height: 112)) }
   }
 }

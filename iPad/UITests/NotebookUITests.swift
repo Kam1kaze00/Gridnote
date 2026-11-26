@@ -23,6 +23,7 @@ final class NotebookUITests: XCTestCase {
         preview.tap()
         let share = app.buttons["Share or save PDF"].firstMatch
         XCTAssertTrue(share.waitForExistence(timeout: 45), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["1 / 1"].firstMatch.waitForExistence(timeout: 45), app.debugDescription)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "Gridnote-iPad-PDF"
         attachment.lifetime = .keepAlways

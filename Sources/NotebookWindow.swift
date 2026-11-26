@@ -161,9 +161,9 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
       scrollView.topAnchor.constraint(equalTo: workArea.topAnchor),
       scrollView.bottomAnchor.constraint(equalTo: workArea.bottomAnchor),
     ])
-    pagesSidebar.thumbnail = { [weak self] p in
+    pagesSidebar.thumbnail = { [weak self] p, objects in
       guard let self else { return nil }
-      return self.canvas.renderer.thumbnail(self.canvas.notebook, page: p)
+      return self.canvas.renderer.thumbnail(self.canvas.notebook, page: p, objects: objects)
     }
     pagesSidebar.jump = { [weak self] p in self?.jumpToPage(p) }
     pagesSidebar.reorder = { [weak self] p, t in self?.organize("move", page: p, to: t) }
@@ -496,6 +496,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     let key = url.standardizedFileURL.path
     let target = position ?? session.positions[key] ?? ViewPosition()
     zoom = target.zoom.isFinite ? min(4, max(1, target.zoom)) : 1
+    pagesSidebar.resetNotebook()
     canvas.load(notebook)
     let title = url.deletingPathExtension().lastPathComponent
     documentName.stringValue = title

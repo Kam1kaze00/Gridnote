@@ -1011,6 +1011,33 @@ import WebKit
     pdfBook.objects = [text1]
     canvas.load(pdfBook)
     owner.togglePages(nil)
+    do {
+      let previews = PageSidebar(frame: NSRect(x: 0, y: 0, width: 136, height: 520))
+      var calls = [Int: Int]()
+      previews.thumbnail = { page, _ in
+        calls[page, default: 0] += 1
+        return NSImage(size: NSSize(width: 79, height: 112))
+      }
+      var reference = pdfBook
+      reference.minimumPages = 6
+      func requestRows() {
+        previews.update(reference, current: 0)
+        for row in 0..<6 { _ = previews.tableView(previews.table, viewFor: nil, row: row) }
+      }
+      requestRows()
+      calls.removeAll()
+      var edit = text1
+      edit.id = UUID()
+      reference.objects.append(edit)
+      reference.revision += 1
+      requestRows()
+      expect(calls == [0: 1], "A page-one edit renders only its own Mac thumbnail across six pages")
+      calls.removeAll()
+      reference.objects.removeLast()
+      reference.revision += 1
+      requestRows()
+      expect(calls == [0: 1], "Removing an edit refreshes the affected Mac thumbnail")
+    }
     let sidebar = visibleViews(PageSidebar.self, in: screen)[0]
     do {
       canvas.refreshTool()
