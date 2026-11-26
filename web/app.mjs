@@ -2134,12 +2134,27 @@ function closePop() {
   popupKind = "";
   popupAnchor = null;
 }
+const panelControls = "button, input, select, textarea, a[href]";
+function returnFromOptions() {
+  const anchor = popupAnchor;
+  closePop();
+  (anchor?.getClientRects().length && !anchor.disabled ? anchor : sheet).focus({preventScroll: true});
+}
+pop.addEventListener("keydown", event => {
+  if (event.key !== "Tab" || event.altKey || event.metaKey || event.ctrlKey) return;
+  const controls = [...pop.querySelectorAll(panelControls)]
+    .filter(el => !el.matches(":disabled") && el.tabIndex >= 0 && el.getClientRects().length);
+  const index = controls.indexOf(document.activeElement);
+  const next = controls[index + (event.shiftKey ? -1 : 1)];
+  event.preventDefault();
+  if (next) next.focus();
+  else returnFromOptions();
+});
 function openPop(anchor, type, heading, build) {
   const samePanel = !pop.hidden && popupAnchor === anchor && popupKind === type;
   const previous = samePanel && pop.contains(document.activeElement) ? document.activeElement : null;
-  const controls = "button, input, select, textarea, a[href]";
   const label = el => el.getAttribute("aria-label") || el.textContent.trim();
-  const previousIndex = previous ? [...pop.querySelectorAll(controls)].indexOf(previous) : -1;
+  const previousIndex = previous ? [...pop.querySelectorAll(panelControls)].indexOf(previous) : -1;
   const scrollTop = samePanel ? pop.scrollTop : 0;
   popupAnchor?.setAttribute("aria-expanded", "false");
   pop.dispatchEvent(new Event("panelclose"));
@@ -2155,7 +2170,7 @@ function openPop(anchor, type, heading, build) {
   anchor.setAttribute("aria-expanded", "true");
   positionPop(anchor);
   pop.scrollTop = scrollTop;
-  const replacement = pop.querySelectorAll(controls)[previousIndex];
+  const replacement = pop.querySelectorAll(panelControls)[previousIndex];
   if (replacement && previous && label(replacement) === label(previous)) replacement.focus({preventScroll: true});
   else if (!samePanel || previous) pop.focus({preventScroll: true});
 }
@@ -3136,9 +3151,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape" && !pop.hidden) {
     e.preventDefault();
-    const anchor = popupAnchor;
-    closePop();
-    (anchor?.getClientRects().length && !anchor.disabled ? anchor : sheet).focus({preventScroll: true});
+    returnFromOptions();
     return;
   }
   if (isEntry(e.target)) {
