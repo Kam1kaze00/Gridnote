@@ -118,10 +118,10 @@
       ><button id="zoomin" aria-label="Zoom in">＋</button
       ><button id="fit">Fit Width</button></div>
     </footer>
-    <section id="popover" role="dialog" hidden></section>
-    <dialog id="pdfmodal">
+    <section id="popover" role="dialog" tabindex="-1" aria-labelledby="popover-heading" hidden></section>
+    <dialog id="pdfmodal" aria-labelledby="pdf-heading">
       <div class="pdf-toolbar">
-        <b>PDF Preview</b>
+        <b id="pdf-heading">PDF Preview</b>
         <div class="spacer"></div>
         <button id="pdfclose">Close</button
         ><button id="pdfshare">Share PDF</button

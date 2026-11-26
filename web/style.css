@@ -605,7 +605,7 @@ footer #selection {
   width: 48px;
 }
 #popover {
-  max-height: 85dvh;
+  max-height: min(85dvh, var(--panel-room, 85dvh));
   overflow: auto;
 }
 #tool-marker .tool-name,
@@ -891,4 +891,10 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
 @media (any-pointer: coarse) {
   .choices.writing-tips button,
   .choices.brush-finish button { min-height: 44px; }
+}
+
+@media (pointer: coarse) {
+  .page-actions { grid-template-columns: repeat(2, minmax(44px, 1fr)); gap: 4px; }
+  .page-actions button, .pdf-toolbar button { min-width: 44px; min-height: 44px; }
+  #pdfmodal .pdf-toolbar { flex-wrap: wrap; row-gap: 2px; }
 }
