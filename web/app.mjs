@@ -471,6 +471,8 @@ async function openBook(next, name, { state, storedRevision = null, recovered = 
     }
   }
   restoring = false;
+  if (recovered) touchSave();
+  else updateStatus();
   refresh();
   draw();
   recordView(true);
@@ -485,11 +487,10 @@ const openStored = serializeNotebookSwitch(async (id) => {
   } catch {}
   state ??= await loadState("view-" + id);
   await openBook(loaded.book, loaded.title, { state, storedRevision: loaded.storedRevision, recovered: loaded.recovered });
-  await saveState("last", id);
   if (loaded.recovered) {
-    touchSave();
+    await flush();
     notify("Restored a recent recovery copy.");
-  }
+  } else await saveState("last", id);
 });
 const newBook = serializeNotebookSwitch(async () => {
   const notebook = blank();
