@@ -1289,14 +1289,6 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     setSelection([])
   }
 
-  func deletePage(_ page: Int) {
-    guard page < notebook.usedPages else { return }
-    finishText()
-    finishGesture()
-    arrangePages(
-      Array(0..<notebook.usedPages).filter { $0 != page }.map { Optional($0) }, name: "Delete Page")
-  }
-
   func arrangePages(_ order: [Int?], name: String) {
     finishText()
     finishGesture()

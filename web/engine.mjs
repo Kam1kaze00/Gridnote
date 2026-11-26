@@ -829,11 +829,3 @@ export function arrangedPages(book, order) {
     minimumPages: Math.max(1, order.length),
   };
 }
-
-export function deletePage(book, n) {
-  if (n < 0 || n >= pageCount(book)) return book;
-  return arrangedPages(
-    book,
-    Array.from({ length: pageCount(book) }, (_, i) => i).filter((i) => i !== n),
-  );
-}
