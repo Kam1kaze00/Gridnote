@@ -129,7 +129,16 @@ export function pageSidebar(panel, { jump, change }) {
   }
   list.onscroll = paint;
   return (book, source, page, scroll = false) => {
-    if (panel.hidden) return;
+    if (panel.hidden) {
+      if (document) {
+        for (const row of visibleRows.values()) row.preview = null;
+        visibleRows.clear();
+        rows.replaceChildren();
+        document = pdf = null;
+        signature = "";
+      }
+      return;
+    }
     if (pdf !== source || (book !== document && book.id === document?.id && book.revision === revision)) signature = "";
     if (book !== document || revision !== book.revision) {
       count = pageCount(book);

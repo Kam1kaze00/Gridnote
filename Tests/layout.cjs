@@ -140,6 +140,7 @@ const assert = require("node:assert/strict");
     await page.waitForFunction(() => !window.beforeThumbs[0].isConnected);
     assert(await page.evaluate(() => window.beforeThumbs.slice(1).every(c => c.isConnected)), "other page previews stay in place");
     await page.click("#page");
+    assert.equal(await page.locator(".page-thumb canvas").count(), 0, "a closed sidebar releases its preview canvases");
 
     await page.setViewportSize({width:844,height:390});
     const writer = page.getByRole("button", {name:"Writer",exact:true});
