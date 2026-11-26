@@ -124,7 +124,7 @@ export function makeInk(points, color, id = uid()) {
   );
   return { id, frame, content: { ink: { _0: points, _1: color } } };
 }
-export function smooth(raw, amount, times = []) {
+export function smooth(raw, amount, times = [], technical = false) {
   if (
     raw.length < 3 ||
     amount <= 0 ||
@@ -146,15 +146,19 @@ export function smooth(raw, amount, times = []) {
       m = dist(b, c);
     const dt = times.length === raw.length ? times[i + 1] - times[i - 1] : 0;
     const speedWeight = dt > 0 ? 1 / (1 + (l + m) / dt / 650) : 1;
-    const k =
-      speedWeight *
-      clamp((dot(u, v) / Math.max(0.0001, l * m) - 0.7) / 0.26, 0, 1) *
-      amount;
+    const turn = dot(u, v) / Math.max(0.0001, l * m);
+    const k = speedWeight * clamp((turn - 0.7) / 0.26, 0, 1) * amount;
     weights[i] = k;
     const t = l / Math.max(0.001, l + m),
       dx = a[0] + (c[0] - a[0]) * t - b[0],
       dy = a[1] + (c[1] - a[1]) * t - b[1];
-    const f = Math.min(0.46 * k, 0.85 / Math.max(0.001, Math.hypot(dx, dy)));
+    const deviation = Math.hypot(dx, dy);
+    let f = Math.min(0.46 * k, 0.85 / Math.max(0.001, deviation));
+    if (technical && turn > 0.35) {
+      const tolerance = Math.min(0.50, raw[i].radius * 0.85);
+      const micro = Math.max(0, 1 - deviation / tolerance) * Math.min(1, (turn - 0.35) / 0.4);
+      f = Math.max(f, 0.86 * amount * micro);
+    }
     pts[i].position = [b[0] + dx * f, b[1] + dy * f];
   }
   const out = [pts[0]];
@@ -196,6 +200,50 @@ export function smooth(raw, amount, times = []) {
     }
   }
   return out;
+}
+export function fittedInk(raw, prefs, times = [], starts = true, lifted = false, marker = false) {
+  const fitted = smooth(raw, prefs.smoothing, times, !marker && prefs.nib === "Fineliner");
+  if (marker || prefs.nib !== "Brush" || !prefs.usePressure || fitted.length < 2) return fitted;
+  const points = fitted.slice();
+  if (starts) taperEnd(points, prefs.width, true);
+  if (lifted) taperEnd(points, prefs.width, false);
+  return points;
+}
+
+// Measure along the stroke, including sparse input. Never move the pen's endpoints.
+function taperEnd(points, width, fromStart) {
+  const step = fromStart ? 1 : -1;
+  const first = fromStart ? 0 : points.length - 1;
+  const limit = width * (fromStart ? 1.25 : 2.2);
+  let run = 0;
+  for (let i = first; points[i + step] && run < 3 * limit; i += step)
+    run += dist(points[i].position, points[i + step].position);
+  if (run <= 0.6 * width) return;
+  const span = Math.min(limit, run / 3);
+  const strength = Math.min(1, (run / width - 0.6) / 1.5);
+  const traveled = [0];
+  let distance = 0;
+  for (let i = first; points[i + step]; i += step) {
+    const next = i + step, a = points[i], b = points[next];
+    const segment = dist(a.position, b.position);
+    if (distance + segment >= span) {
+      const t = (span - distance) / Math.max(0.000001, segment);
+      const shoulder = {
+        position: a.position.map((v, axis) => v + (b.position[axis] - v) * t),
+        radius: a.radius + (b.radius - a.radius) * t,
+      };
+      const endRadius = shoulder.radius * (1 - strength * (fromStart ? 0.72 : 0.92));
+      traveled.forEach((d, offset) => {
+        const n = first + step * offset;
+        const cap = endRadius + (shoulder.radius - endRadius) * d / span;
+        points[n] = {...points[n], radius: Math.min(points[n].radius, Math.max(0.035 * width, cap))};
+      });
+      if (t > 0.001 && t < 0.999) points.splice(Math.max(i, next), 0, shoulder);
+      break;
+    }
+    distance += segment;
+    traveled.push(distance);
+  }
 }
 const fmt = (x) => String(Math.round(x * 1000) / 1000);
 const pair = (p) => p.map(fmt).join(" ");

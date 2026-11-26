@@ -35,6 +35,8 @@ final class ToolOptionsController: NSViewController {
   private var diameterSlider: NSSlider?
   private var widthSlider: NSSlider?
   private var responseSlider: NSSlider?
+  private var flowRow: NSView?
+  var didResize: ((CGSize) -> Void)?
   private var pressureSwitch: NSButton?
   private var preview: BrushSample?
   private var tableFields: [NSTextField] = []
@@ -48,6 +50,7 @@ final class ToolOptionsController: NSViewController {
       settings = [
         ("Width", 0.7...6, \.width, "%.1f pt"), ("Smoothing", 0...1, \.smoothing, "%.0f%%"),
         ("Pressure response", 0.5...2, \.pressure, "%.2f×"),
+        ("Ink flow", 0.25...1, \.penFlow, "%.0f%%"),
       ]
     case .eraser: settings = [("Contact diameter", 6...36, \.eraserDiameter, "%.0f pt")]
     case .text: settings = [("Type size", 8...36, \.textSize, "%.0f pt")]
@@ -152,7 +155,12 @@ final class ToolOptionsController: NSViewController {
       slider.isContinuous = true
       slider.setAccessibilityLabel(item.0)
       slider.widthAnchor.constraint(equalToConstant: 248).isActive = true
-      column.addArrangedSubview(chromeStack([row, slider], spacing: 3, horizontal: false))
+      let controlRow = chromeStack([row, slider], spacing: 3, horizontal: false)
+      column.addArrangedSubview(controlRow)
+      if item.2 == \PenPreferences.penFlow {
+        flowRow = controlRow
+        controlRow.isHidden = preferences.nib != .pen
+      }
       display(i)
     }
     if [.brush, .shapes, .marker].contains(tool) && !preferences.paletteVisible {
@@ -178,10 +186,14 @@ final class ToolOptionsController: NSViewController {
       title: "Restore tool defaults", target: self, action: #selector(restoreTool))
     reset.controlSize = .small
     column.addArrangedSubview(reset)
+    fitControls()
+  }
+  private func fitControls() {
     view.layoutSubtreeIfNeeded()
     preferredContentSize = CGSize(
       width: max(280, ceil(column.fittingSize.width) + 32),
       height: ceil(column.fittingSize.height) + 30)
+    didResize?(preferredContentSize)
   }
 
   @objc private func restoreTool() {
@@ -193,7 +205,9 @@ final class ToolOptionsController: NSViewController {
   @objc private func nibChanged(_ sender: NSSegmentedControl) {
     preferences.nib = WritingTip.allCases[sender.selectedSegment]
     if let widthSlider { widthSlider.doubleValue = preferences.width; display(widthSlider.tag) }
+    flowRow?.isHidden = preferences.nib != .pen
     syncPressure()
+    fitControls()
     canvas.refreshTool()
   }
   @objc private func pressureChanged(_ sender: NSButton) {
@@ -201,9 +215,8 @@ final class ToolOptionsController: NSViewController {
     syncPressure()
   }
   private func syncPressure() {
-    let speedBrush = preferences.nib == .brush && !preferences.device.pressure
-    let supported = speedBrush || (preferences.device.pressure && preferences.nib != .fineliner)
-    pressureSwitch?.title = speedBrush ? "Use stroke speed" : "Use pen pressure"
+    let supported = preferences.nib != .fineliner
+    pressureSwitch?.title = supported && !preferences.device.pressure ? "Use stroke speed" : "Use pen pressure"
     pressureSwitch?.state = supported && preferences.usePressure ? .on : .off
     pressureSwitch?.isEnabled = supported
     responseSlider?.isEnabled = supported && preferences.usePressure
@@ -354,7 +367,7 @@ final class ToolOptionsController: NSViewController {
     let value =
       (item.2 == \PenPreferences.textSize
         ? canvas.currentFormat(table: false).size : preferences[keyPath: item.2])
-      * ((item.2 == \PenPreferences.smoothing || item.2 == \PenPreferences.markerOpacity) ? 100 : 1)
+      * ((item.2 == \PenPreferences.smoothing || item.2 == \PenPreferences.markerOpacity || item.2 == \PenPreferences.penFlow) ? 100 : 1)
     if item.2 == \PenPreferences.pressure {
       let feel = abs(value - 1) < 0.005 ? "Linear" : value < 1 ? "Soft" : "Firm"
       readouts[i].stringValue = String(format: "%@ · %.2f", feel, value)
@@ -444,9 +457,9 @@ private final class BrushSample: NSView {
       previous = radius
       lastPosition = position
     }
-    let ball = style.tip == .pen && style.usesPressure && preferences.device.pressure
-    PaperRenderer().footprint(smoothedInk(points, amount: preferences.smoothing),
+    let ball = style.tip == .pen
+    PaperRenderer().footprint(style.fittedInk(points, smoothing: preferences.smoothing, lifted: true),
                               ballpointWidth: ball ? style.width : nil)
-      .paint(color: InkColor.colors[preferences.colorIndex].1, context: context)
+      .paint(color: InkColor.colors[preferences.colorIndex].1, flow: preferences.penFlow, context: context)
   }
 }

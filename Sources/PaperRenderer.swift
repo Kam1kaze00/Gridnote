@@ -12,21 +12,24 @@ struct InkFootprint {
     } else { context.addPath(body) }
   }
 
-  static func paint(color: InkColor, hasCore: Bool, context: CGContext, add: (Bool) -> Void) {
+  static func paint(color: InkColor, hasCore: Bool, flow: CGFloat = 1, context: CGContext, add: (Bool) -> Void) {
+    context.saveGState()
+    defer { context.restoreGState() }
     context.setFillColor(color.cg)
     if hasCore {
       context.saveGState()
-      context.setAlpha(0.43)
+      context.setAlpha(0.43 * flow)
       add(false)
       context.fillPath()
       context.restoreGState()
+      context.setAlpha(flow)
     }
     add(hasCore)
     context.fillPath()
   }
 
-  func paint(color: InkColor, context: CGContext) {
-    Self.paint(color: color, hasCore: core != nil, context: context) { add(to: context, core: $0) }
+  func paint(color: InkColor, flow: CGFloat = 1, context: CGContext) {
+    Self.paint(color: color, hasCore: core != nil, flow: flow, context: context) { add(to: context, core: $0) }
   }
 }
 
@@ -141,7 +144,7 @@ final class PaperRenderer {
         context.setAlpha(object.opacity ?? 0.38)
         context.setBlendMode(.multiply)
       }
-      path.paint(color: ink, context: context)
+      path.paint(color: ink, flow: object.opacity ?? 1, context: context)
     case .image(let data):
       let key = object.id as NSUUID
       let cached = images.object(forKey: key)?.image

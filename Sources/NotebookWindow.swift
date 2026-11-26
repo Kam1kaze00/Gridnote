@@ -855,6 +855,7 @@ final class NotebookWindow: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     popover.appearance = NSAppearance(named: .darkAqua)
     popover.contentViewController = panel
     popover.contentSize = panel.preferredContentSize
+    panel.didResize = { [weak popover] size in popover?.contentSize = size }
     let anchor = sender as? NSView ?? button
     popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     settingsPopover = popover

@@ -216,7 +216,7 @@ func polygonSelects(_ object: NoteObject, polygon: [CGPoint], bounds: CGRect) ->
   }
 }
 
-func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = []) -> [InkPoint] {
+func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = [], technical: Bool = false) -> [InkPoint] {
   guard raw.count > 2, amount > 0,
     zip(raw, raw.dropFirst()).reduce(
       CGFloat.zero, { $0 + $1.0.position.distance(to: $1.1.position) }) > 5
@@ -239,7 +239,13 @@ func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = [])
     let smooth = min(1, max(0, (turn - 0.70) / 0.26)) * amount * speedWeight
     let target = a + (c - a) * (u.length / max(u.length + v.length, 0.001))
     let correction = target - b
-    let capped = min(0.46 * smooth, 0.85 / max(correction.length, 0.001))
+    var capped = min(0.46 * smooth, 0.85 / max(correction.length, 0.001))
+    if technical && turn > 0.35 {
+      // Technical nibs keep an even track. Straighten only sub-nib chatter.
+      let tolerance = min(0.50, raw[i].radius * 0.85)
+      let micro = max(0, 1 - correction.length / tolerance) * min(1, (turn - 0.35) / 0.4)
+      capped = max(capped, 0.86 * amount * micro)
+    }
     filtered[i].position = b + correction * capped
     strength[i] = smooth
   }
