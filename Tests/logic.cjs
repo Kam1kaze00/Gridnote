@@ -211,7 +211,15 @@ async function exportWhileSwitching(page) {
 
 async function imagesWhileSwitching(page) {
   await page.click("#new");
-  const original = await page.evaluate(async () => (await import("./store.mjs")).loadState("last"));
+  await page.click("#files");
+  await page.locator("#popover").getByRole("button", { name: "Rename notebook…" }).click();
+  await page.getByRole("textbox", { name: "Notebook name" }).fill("Original diagrams");
+  await page.getByRole("button", { name: "Save name" }).click();
+  const original = await (await page.waitForFunction(async () => {
+    const s = await import("./store.mjs");
+    const info = await s.lastNotebookInfo();
+    return info?.title === "Original diagrams" && info.id;
+  })).jsonValue();
   // Delay the first of two images to force a notebook switch during decoding.
   await page.evaluate(async () => {
     const canvas = document.createElement("canvas");
@@ -236,7 +244,9 @@ async function imagesWhileSwitching(page) {
   await page.waitForFunction(async id => {
     const s = await import("./store.mjs");
     const last = await s.loadState("last");
-    return last !== id && document.querySelector("#saved").textContent === "Saved";
+    return last && last !== id && (await s.loadRecord(last))?.title === "Untitled Notebook"
+      && document.querySelector("#name").textContent === "Untitled Notebook"
+      && document.querySelector("#saved").textContent === "Saved";
   }, original);
   const counts = await page.evaluate(async id => {
     const s = await import("./store.mjs");
