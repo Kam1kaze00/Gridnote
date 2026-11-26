@@ -450,7 +450,6 @@ async function openBook(next, name, state = null, stored = null) {
   refresh();
   draw();
   recordView(true);
-  await saveState("last", book.id);
 }
 async function openStored(id) {
   const loaded = await loadRecord(id);
@@ -461,6 +460,7 @@ async function openStored(id) {
   } catch {}
   state ??= await loadState("view-" + id);
   await openBook(loaded.book, loaded.title, state, loaded.storedRevision);
+  await saveState("last", id);
   if (loaded.recovered) {
     touchSave();
     notify("Restored a recent recovery copy.");

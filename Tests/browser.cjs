@@ -116,6 +116,23 @@ async function main() {
     assert(rejectedPaper, "damaged paper indexes are reported before replacing the current notebook");
     assert(!(await page.locator("#sheet").isVisible()));
     await page.click("#new");
+    await page.waitForFunction(async () => Boolean(await (await import("./store.mjs")).lastNotebookInfo()));
+    const lastSaved = await page.evaluate(async () => {
+      const { loadState } = await import("./store.mjs");
+      const transaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function(stores, mode, ...args) {
+        if (mode === "readwrite" && Array.isArray(stores) && stores.includes("assets"))
+          throw new DOMException("Storage full", "QuotaExceededError");
+        return transaction.call(this, stores, mode, ...args);
+      };
+      return loadState("last");
+    });
+    await page.click("#files");
+    await page.getByRole("button", { name: "New notebook", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("#saved").textContent === "Save error");
+    await page.reload();
+    await page.click("#continue");
+    assert.equal(await page.evaluate(async () => (await import("./store.mjs")).loadState("last")), lastSaved);
     await page.waitForSelector("#tool-table");
     await page.click("#tool-brush");
     await page.getByRole("button", { name: "Fineliner", exact: true }).click();
