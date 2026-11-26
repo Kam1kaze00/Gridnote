@@ -108,6 +108,7 @@ const tipWidths = { Pen: 1.5, Brush: 2, Fineliner: 0.9, Gel: 2.5, Fountain: 4.2,
 const deviceTuning = new Set(["pressure", "smoothing", "scroll"]);
 export const defaultSettings = {
   nib: "Brush",
+  brushFinish: "Inked",
   usePressure: true,
   penFlow: 1,
   width: 2,
@@ -147,7 +148,14 @@ export function pressureResponse(p, force) {
   if (p.nib === "Pencil") return 0.32 + 1.35 * level;
   return p.nib === "Pen"
     ? 0.74 + 0.36 * level * (0.72 + 0.28 * level)
-    : 0.08 + 3.05 * level / (0.70 + 0.30 * level);
+    : 0.085 + (p.brushFinish === "Dry" ? 3.04 * level ** 1.06 : 2.88 * level ** 1.16);
+}
+export function brushMotion(previous, distance, elapsed, width) {
+  const velocity = Math.min(1200, distance / Math.max(0.001, elapsed));
+  return {
+    travel: (previous?.travel ?? 0) + distance / width,
+    speed: previous?.travel > 0 ? (previous.speed ?? velocity)*0.72 + velocity*0.28 : velocity,
+  };
 }
 export function sampledRadius(p, force, previous, distance, elapsed, lift, stylus, crossTilt = 0) {
   if (!p.usePressure || p.nib === "Fineliner") return p.width / 2;
@@ -171,14 +179,14 @@ export function sampledRadius(p, force, previous, distance, elapsed, lift, stylu
   const spread = 1 + tiltGain * Math.min(1, Math.abs(crossTilt)) * force;
   const target = p.width * pressureResponse(p, force) * spread / 2;
   if (previous == null) return target;
-  const response = p.nib === "Brush" && target > previous ? 0.008 : 0.0035;
+  const response = p.nib === "Brush" ? (target > previous ? 0.014 : 0.007) : 0.0035;
   return target + (previous - target) * Math.exp(-dt / response);
 }
 export function restore(tool) {
   if (!tool) prefs = {};
   else {
     const keys = {
-      brush: ["nib", "usePressure", "penFlow", "width", "smoothing", "pressure", "ink"],
+      brush: ["nib", "brushFinish", "usePressure", "penFlow", "width", "smoothing", "pressure", "ink"],
       selector: ["select", "guides", "mask"],
       eraser: ["erase", "diameter"],
       text: ["textSize", "textInk", "alignment", "textTraits", "code"],

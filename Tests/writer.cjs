@@ -84,6 +84,7 @@ const engines = require("playwright");
     for (const name of ["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]) {
       await options();
       await tip(name);
+      assert.equal(await panel.getByRole("button",{name:"Dry",exact:true}).count(), name === "Brush" ? 1 : 0);
       const original = Number(
         await panel.getByLabel("Width", { exact: true }).inputValue(),
       );
@@ -212,6 +213,22 @@ const engines = require("playwright");
       Number(await panel.getByLabel("Width", { exact: true }).inputValue()),
       2,
     );
+    const finishButton = name => panel.getByRole("button", {name, exact:true});
+    assert.equal(await finishButton("Inked").getAttribute("aria-pressed"), "true");
+    await finishButton("Dry").click();
+    await draw([0.15, 0.6, 0.9, 0.4, 0.1]);
+    const savedDry = await page.evaluate(async () => {
+      const {loadRecord,loadState} = await import("./store.mjs");
+      return (await loadRecord(await loadState("last"))).book.objects.at(-1);
+    });
+    assert.equal(savedDry.inkNib.finish, "Dry");
+    assert(savedDry.content.ink._0.at(-1).travel > 0);
+    await options();
+    await tip("Pen");
+    await tip("Brush");
+    assert.equal(await finishButton("Dry").getAttribute("aria-pressed"), "true");
+    await panel.getByRole("button", {name:"Restore tool defaults"}).click();
+    assert.equal(await finishButton("Inked").getAttribute("aria-pressed"), "true");
     const detail = await page.evaluate(async () => {
       const {sampledRadius} = await import("./devices.mjs");
       const {fittedInk} = await import("./engine.mjs");
@@ -239,6 +256,11 @@ const engines = require("playwright");
       stroke("Pencil",80);
       stroke("Fountain",116,30);
       stroke("Fountain",178,-30);
+      for (const [finish,y] of [["Inked",220],["Dry",240]]) {
+        const mark = makeInk([0,1].map(t=>({position:[84+t*62,y],radius:3,travel:t*28,speed:400})),{r:0,g:0,b:0});
+        mark.inkNib = {tip:"Brush",width:2.2,finish,seed:71};
+        book.objects.push(mark);
+      }
       const zoom = 5, doc = await readPDF(await makePDF(book));
       const bitmap = await pdfBitmap(doc,0,W*zoom);
       const ctx = bitmap.getContext("2d");
@@ -257,9 +279,11 @@ const engines = require("playwright");
         for(let i=0;i<data.length;i+=4) ink+=(255-data[i])/255;
         return ink;
       };
-      return {gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
+      const gaps = y => scan(y-1.8, 170, 18).filter(value => value > 90).length;
+      return {inkedGaps:gaps(220), dryGaps:gaps(240), gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
         narrow:coverage(116,1), broad:coverage(178,-1)};
     });
+    assert(marks.dryGaps > 250 && marks.inkedGaps < 5, "the printed Dry brush separates into bristles and Inked stays solid");
     assert(marks.gel < 10 && marks.graphiteContrast > 45, "gel is opaque and the printed pencil shows paper tooth");
     assert(marks.broad > 1.7*marks.narrow, "a broad fountain nib changes the printed width with direction");
     assert.deepEqual(errors, []);

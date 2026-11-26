@@ -138,7 +138,7 @@ final class PaperRenderer {
         path = footprint(points, ballpointWidth: object.ballpointWidth, nib: object.inkNib)
         strokes.setObject(
           StrokeBox(points: points, width: object.ballpointWidth, path: path), forKey: key,
-          cost: points.count * (path.core == nil ? 80 : 160))
+          cost: points.count * (path.nib?.finish == .dry ? 980 : (path.core == nil ? 80 : 160)))
       }
       context.saveGState()
       defer { context.restoreGState() }

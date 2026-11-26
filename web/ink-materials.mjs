@@ -14,7 +14,9 @@ for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
     patches.push([x*spacing, y*spacing, (0.60 + ((n>>>8)%76)/100)*spacing, (0.55 + ((n>>>16)%71)/100)*spacing]);
 }
 
-export function inkLayers(tip) {
+export function inkLayers(tip, finish) {
+  if (tip === "Brush" && finish === "Inked") return [0.59, 0.96];
+  if (tip === "Brush" && finish === "Dry") return [0.055, 0.94];
   switch (tip) {
     case "Pencil": return [0.20, 0.66];
     case "Fountain": return [0.56, 0.81];

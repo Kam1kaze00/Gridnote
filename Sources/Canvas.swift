@@ -20,9 +20,11 @@ struct WritingStyle {
   let width: Double
   let usesPressure: Bool
   let exponent: Double
+  var finish: BrushFinish = .inked
+  var seed: Int? = nil
 
   var inkNib: InkNib? {
-    [.brush, .gel, .fountain, .pencil].contains(tip) ? InkNib(tip: tip.rawValue, width: width) : nil
+    [.brush, .gel, .fountain, .pencil].contains(tip) ? InkNib(tip: tip.rawValue, width: width, finish: tip == .brush ? finish : nil, seed: tip == .brush ? seed : nil) : nil
   }
   func radius(at force: Double?) -> CGFloat {
     guard usesPressure, tip != .fineliner, let force, force.isFinite else { return width / 2 }
@@ -33,7 +35,7 @@ struct WritingStyle {
     case .gel: weight = 0.94 + 0.12 * level
     case .fountain: weight = 0.75 + 0.48 * level
     case .pencil: weight = 0.32 + 1.35 * level
-    case .brush: weight = 0.08 + 3.05 * level / (0.70 + 0.30 * level)
+    case .brush: weight = 0.085 + (finish == .dry ? 3.04 * pow(level, 1.06) : 2.88 * pow(level, 1.16))
     case .fineliner: weight = 1
     }
     return width * weight / 2
@@ -68,7 +70,7 @@ struct WritingStyle {
     let spread = 1 + tiltGain * min(1, abs(crossTilt)) * contact
     let target = radius(at: contact) * spread
     guard let previous else { return target }
-    let response = tip == .brush && target > previous ? 0.008 : 0.0035
+    let response = tip == .brush ? (target > previous ? 0.014 : 0.007) : 0.0035
     return target + (previous - target) * CGFloat(exp(-dt / response))
   }
   func fittedInk(_ raw: [InkPoint], smoothing: CGFloat, times: [TimeInterval] = [],
@@ -102,8 +104,7 @@ struct WritingStyle {
       let segment = a.position.distance(to: b.position)
       if distance + segment >= span {
         let t = (span - distance) / max(0.000001, segment)
-        let shoulder = InkPoint(position: a.position + (b.position - a.position) * t,
-                                radius: a.radius + (b.radius - a.radius) * t)
+        let shoulder = a.interpolated(to: b, by: t)
         let endRadius = shoulder.radius * (1 - strength * (fromStart ? 0.72 : 0.92))
         for (offset, d) in traveled.enumerated() {
           let n = first + step * offset
@@ -213,13 +214,17 @@ final class PenPreferences {
     get { defaults.object(forKey: deviceKey("UsePressure")) as? Bool ?? true }
     set { setTuning("UsePressure", newValue) }
   }
+  var brushFinish: BrushFinish {
+    get { BrushFinish(rawValue: defaults.string(forKey: "BrushFinish") ?? "") ?? .inked }
+    set { defaults.set(newValue.rawValue, forKey: "BrushFinish") }
+  }
   var penFlow: Double {
     get { value("PenFlow", fallback: 1, range: 0.25...1) }
     set { defaults.set(newValue, forKey: "PenFlow") }
   }
   var writingStyle: WritingStyle {
     WritingStyle(
-      tip: nib, width: width, usesPressure: usePressure, exponent: pressure)
+      tip: nib, width: width, usesPressure: usePressure, exponent: pressure, finish: brushFinish)
   }
   func restore(_ tool: NoteTool? = nil) {
     let scoped: [NoteTool: [String]] = [
@@ -227,7 +232,7 @@ final class PenPreferences {
       .eraser: ["EraserDiameter"],
     ]
     let common: [NoteTool: [String]] = [
-      .brush: ["InkColor", "WritingTip", "PenFlow", "PendingWriterTuning"] + WritingTip.allCases.map { "Width." + $0.rawValue },
+      .brush: ["InkColor", "WritingTip", "BrushFinish", "PenFlow", "PendingWriterTuning"] + WritingTip.allCases.map { "Width." + $0.rawValue },
       .selector: ["SelectionMode", "SelectionMask", "AlignmentGuides"],
       .eraser: ["EraseMode"],
       .text: ["TextSize", "TextAlignment", "TextColor", "CodeBlocks", "TextTraits"],
@@ -797,7 +802,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
 
   func appendInk(_ event: NSEvent, location: CGPoint, isLift: Bool = false) {
     guard inkColor != nil else { return }
-    let point = sample(event, point: location, usingLastPressure: isLift)
+    var point = sample(event, point: location, usingLastPressure: isLift)
     let moved = ink.last.map { point.position.distance(to: $0.position) >= 0.12 } ?? true
     if moved { lastInkMotion = event.timestamp }
     if isLift { brushLifted = event.timestamp - lastInkMotion <= 0.09 }
@@ -810,6 +815,10 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         invalidate(previous.bounds.union(ink[index].bounds).union(ink[max(0, index - 1)].bounds))
       }
       return
+    }
+    if strokeStyle.tip == .brush {
+      point.recordBrushMotion(after: ink.last, width: strokeStyle.width,
+        elapsed: event.timestamp - (inkTimes.last ?? event.timestamp))
     }
     ink.append(point)
     inkTimes.append(event.timestamp)
@@ -852,6 +861,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
         ? WritingStyle(
           tip: .fineliner, width: preferences.markerWidth, usesPressure: false, exponent: 1)
         : preferences.writingStyle
+      if strokeStyle.tip == .brush { strokeStyle.seed = Int(draftID.uuid.0) }
       ballpointWidth = strokeStyle.tip == .pen ? strokeStyle.width : nil
       inkFlow = ballpointWidth == nil ? 1 : preferences.penFlow
       inkSmoothing = preferences.smoothing

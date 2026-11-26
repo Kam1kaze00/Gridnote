@@ -1,4 +1,4 @@
-import { kind, makeInk, near, overlaps, rect } from "./engine.mjs";
+import { brushContactBetween, kind, makeInk, near, overlaps, rect } from "./engine.mjs";
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
 function cutInterval(a, b, start, end, r) {
@@ -61,6 +61,7 @@ function cutInterval(a, b, start, end, r) {
 function between(a, b, t) {
   return {
     position: a.position.map((v, i) => v + (b.position[i] - v) * t),
+    ...brushContactBetween(a, b, t),
     radius: a.radius + (b.radius - a.radius) * t,
   };
 }

@@ -860,3 +860,12 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+.choices.brush-finish {
+  display: grid;
+  grid-template-columns: 1fr repeat(2, minmax(48px, 1fr));
+  align-items: center;
+}
+@media (pointer: coarse) {
+  .choices.brush-finish button { min-height: 44px; }
+}

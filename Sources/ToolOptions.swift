@@ -35,6 +35,7 @@ final class ToolOptionsController: NSViewController {
   private var diameterSlider: NSSlider?
   private var widthSlider: NSSlider?
   private var responseSlider: NSSlider?
+  private var brushFinishRow: NSView?
   private var flowRow: NSView?
   var didResize: ((CGSize) -> Void)?
   private var tipButtons: [NSButton] = []
@@ -102,6 +103,14 @@ final class ToolOptionsController: NSViewController {
         return row
       }
       column.addArrangedSubview(chromeStack(rows, spacing: 2, horizontal: false))
+      let finishControl = NSSegmentedControl(labels: BrushFinish.allCases.map { $0.rawValue },
+        trackingMode: .selectOne, target: self, action: #selector(brushFinishChanged(_:)))
+      finishControl.selectedSegment = BrushFinish.allCases.firstIndex(of: preferences.brushFinish) ?? 0
+      finishControl.setAccessibilityLabel("Brush finish")
+      let finishRow = chromeStack([chromeLabel("Finish", size: 12), finishControl], spacing: 8)
+      brushFinishRow = finishRow
+      column.addArrangedSubview(finishRow)
+      finishRow.isHidden = preferences.nib != .brush
       let toggle = NSButton(
         checkboxWithTitle: "Use pen pressure", target: self, action: #selector(pressureChanged(_:)))
       pressureSwitch = toggle
@@ -221,9 +230,16 @@ final class ToolOptionsController: NSViewController {
     preferences.nib = tip
     for button in tipButtons { button.state = button === sender ? .on : .off }
     if let widthSlider { widthSlider.doubleValue = preferences.width; display(widthSlider.tag) }
+    brushFinishRow?.isHidden = tip != .brush
     flowRow?.isHidden = preferences.nib != .pen
     syncPressure()
     fitControls()
+    canvas.refreshTool()
+  }
+  @objc private func brushFinishChanged(_ sender: NSSegmentedControl) {
+    guard BrushFinish.allCases.indices.contains(sender.selectedSegment) else { return }
+    preferences.brushFinish = BrushFinish.allCases[sender.selectedSegment]
+    preview?.needsDisplay = true
     canvas.refreshTool()
   }
   @objc private func pressureChanged(_ sender: NSButton) {
@@ -465,11 +481,16 @@ private final class BrushSample: NSView {
       let y = 15 + sin(t * 3 * .pi) * 7
       let force = 0.04 + 0.94 * pow(sin(Double.pi * Double(t)), 2)
       let position = CGPoint(x: 12 + t * (bounds.width - 24), y: y)
+      let elapsed = style.tip == .brush ? 0.005 + force * 0.008 : 0.008 + force * 0.018
       let radius = style.sampledRadius(
         force: preferences.device.pressure ? force : nil, previous: previous,
-        distance: lastPosition?.distance(to: position) ?? 0, elapsed: 0.008 + force * 0.018,
+        distance: lastPosition?.distance(to: position) ?? 0, elapsed: elapsed,
         lift: i == 100, stylus: preferences.device.pressure)
-      points.append(InkPoint(position: position, radius: radius))
+      var point = InkPoint(position: position, radius: radius)
+      if style.tip == .brush {
+        point.recordBrushMotion(after: points.last, width: style.width, elapsed: elapsed)
+      }
+      points.append(point)
       previous = radius
       lastPosition = position
     }

@@ -21,13 +21,13 @@ The launcher offers **Continue notebook**, **New notebook** and **Open file**. T
 
 ## Work on a page
 
-- **Write.** Press **Q** for Writer. Use Pen for a fine ballpoint line, Gel for solid ink, or Fountain for shading and broad downstrokes. Brush leaves a tapered, bristled mark. Pencil shades with a visible grain. Fineliner keeps a uniform line. Tap Writer to change tips or set the width for each one. Under Pen, adjust **Ink flow** to make new writing lighter or darker.
+- **Write.** Press **Q** for Writer. Use Pen for a fine ballpoint line, Gel for solid ink, or Fountain for shading and broad downstrokes. Choose **Brush → Inked** for a solid downstroke and fine tip. Choose **Dry** for bristle gaps on quick strokes. Pencil shades with a visible grain. Fineliner keeps a uniform line. Tap Writer to change tips or set the width for each one. Under Pen, adjust **Ink flow** to make new writing lighter or darker.
 - **Edit.** Press **W** to select, **E** to erase or **R** to type. Select a stroke, image, text block or table to move or resize it. Undo and redo work on edits and page operations.
 - **Add the exercise.** Paste a screenshot, import an image or open a PDF. On a tablet or phone, you can photograph and crop an exercise directly into the current page.
 - **Work it out.** Add a highlighter mark, table, code block or shape. Drag **Shapes → X–Y axes** to lay out a graph. Use **Solve** to review a supported equation or code snippet. You can correct what the app reads before using the result.
 - **Organize and share.** Choose grid, ruled, dotted or plain paper. Open **Pages** to add or move sheets. **Clear Writing** removes Writer strokes on the current page. **Preview PDF**, **Export PDF** and the system share sheet use the same A4 page breaks.
 
-![The same hatching, pressure sweep and handwritten equation using six Writer tips on grid paper](docs/images/writer-tips.png)
+![The same hatching, pressure sweep and handwritten equation using six Writer tips and both brush finishes on grid paper](docs/images/writer-tips.png)
 
 [Open the editable Writer samples](docs/examples/Writer%20samples.gridnote).
 
