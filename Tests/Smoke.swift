@@ -144,9 +144,13 @@ import WebKit
       guard case .ink(let pts, _) = canvas.notebook.objects.last?.content else { return [] }
       return pts.map(\.radius)
     }
+    func finishControl() -> NSSegmentedControl? {
+      visibleViews(NSSegmentedControl.self, in: panel).first { $0.accessibilityLabel() == "Brush finish" }
+    }
     var spans: [CGFloat] = []
     for tip in WritingTip.allCases {
       pick(tip)
+      expect((finishControl() != nil) == (tip == .brush), "finish selector appears only for Brush")
       expect(
         abs(width.doubleValue - tip.defaultWidth) < 0.01,
         tip.rawValue + " has its own starting width")
@@ -157,7 +161,7 @@ import WebKit
       let object = canvas.notebook.objects.last!
       expect(object.ballpointWidth == (tip == .pen ? 3 : nil), "only pressure ballpoint has layered ink")
       if [.gel,.fountain,.brush,.pencil].contains(tip) {
-        expect(object.inkNib == InkNib(tip: tip.rawValue, width: 3), "the selected writing material survives pen lift")
+        expect(object.inkNib?.tip == tip.rawValue && object.inkNib?.width == 3 && object.inkNib?.finish == (tip == .brush ? .inked : nil), "the selected writing material survives pen lift")
         let scaled = object.transformed(from: .zero, scale: 2, offset: .zero)
         expect(scaled.inkNib?.width == 6 && cutInk(object) { $0.position.x > 43 }.first?.inkNib == object.inkNib,
                "resizing and clipping preserve the material of a Writer stroke")
@@ -244,6 +248,17 @@ import WebKit
     expect(canvas.notebook.objects.suffix(2).first?.opacity == 0.25,
            "changing Pen controls leaves the previous stroke as drawn")
     pick(.brush)
+    let finish = finishControl()!
+    expect(finish.selectedSegment == 0, "Brush defaults to Inked")
+    finish.selectedSegment = 1
+    finish.sendAction(finish.action, to: finish.target)
+    _ = draw([0.2, 0.6, 0.9, 0.5, 0.1])
+    let dry = canvas.notebook.objects.last!
+    let reopened = try! JSONDecoder().decode(NoteObject.self, from: JSONEncoder().encode(dry))
+    expect(reopened.inkNib?.finish == .dry && reopened == dry, "Dry strokes keep their finish on disk")
+    pick(.pen)
+    pick(.brush)
+    expect(preferences.brushFinish == .dry && finish.selectedSegment == 1, "Brush remembers the selected finish")
     expect(width.doubleValue == 4, "returning to Brush restores its own width")
     popover.close()
     preferences.restore()

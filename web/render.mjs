@@ -140,14 +140,14 @@ export function paintPaper(ctx, page, design) {
 export {textLines} from "./blocks.mjs";
 export function inkFootprint(o) {
   const core = materialCorePath(o);
-  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null, tip:o.inkNib?.tip};
+  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null, tip:o.inkNib?.tip, finish:o.inkNib?.finish};
 }
 export function paintFootprint(ctx, paths, color, flow = 1) {
   ctx.fillStyle = rgb(color);
   if (paths.core) {
     ctx.save();
     const original = ctx.globalAlpha;
-    const [body, detail] = inkLayers(paths.tip);
+    const [body, detail] = inkLayers(paths.tip, paths.finish);
     ctx.globalAlpha = original * flow * body;
     ctx.fill(paths.body);
     ctx.globalAlpha = original * flow * detail;
@@ -312,13 +312,13 @@ export async function makePDF(book, source, progress) {
           x: 0,
           y: H + top,
           color: lib.rgb(c.r, c.g, c.b),
-          opacity: (core ? inkLayers(o.inkNib?.tip)[0] : 1) * (o.opacity ?? 1),
+          opacity: (core ? inkLayers(o.inkNib?.tip, o.inkNib?.finish)[0] : 1) * (o.opacity ?? 1),
           blendMode:
             o.instrument === "marker" ? lib.BlendMode.Multiply : undefined,
         };
         page.drawSvgPath(inkPath(o), options);
         if (core && o.inkNib?.tip === "Pencil") graphitePDFFill(lib, doc, page, graphite, c, core, H+top);
-        else if (core) page.drawSvgPath(core, {...options, opacity: inkLayers(o.inkNib?.tip)[1] * (o.opacity ?? 1)});
+        else if (core) page.drawSvgPath(core, {...options, opacity: inkLayers(o.inkNib?.tip, o.inkNib?.finish)[1] * (o.opacity ?? 1)});
       } else if (kind(o) === "image") {
         let img = pngs.get(o.id);
         if (!img) {

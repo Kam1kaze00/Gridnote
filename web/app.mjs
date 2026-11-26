@@ -65,6 +65,7 @@ import {
   mobileSurface,
   fingerWrites,
   useFinger,
+  brushMotion,
   sampledRadius,
   restore,
   settings,
@@ -621,8 +622,9 @@ function backgroundReady() {
   if (inkBackdrop) inkBackdrop.book = null;
   draw();
 }
-function inkNib(prefs) {
-  return ["Brush","Gel","Fountain","Pencil"].includes(prefs.nib) ? {tip:prefs.nib, width:prefs.width} : undefined;
+function inkNib(prefs, seed = 71) {
+  if (prefs.nib === "Brush") return {tip: "Brush", width: prefs.width, finish: prefs.brushFinish, seed};
+  return ["Gel","Fountain","Pencil"].includes(prefs.nib) ? {tip:prefs.nib, width:prefs.width} : undefined;
 }
 function paintLiveInk(g) {
   // Freeze completed portions of the preview. The full-resolution stroke is
@@ -644,7 +646,7 @@ function paintLiveInk(g) {
     add(g.prefix, section(g.previewStart, end + 1));
     g.previewStart = end;
   }
-  const outline = {tip:g.inkNib?.tip, body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
+  const outline = {tip:g.inkNib?.tip, finish:g.inkNib?.finish, body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
   add(outline, section(g.previewStart, g.raw.length));
   ctx.save();
   if (g.marker) {
@@ -916,7 +918,12 @@ function append(e, p, isUp = false) {
     }
     return;
   }
-  g.raw.push({ position: p, radius });
+  const point = {position: p, radius};
+  if (g.inkNib?.tip === "Brush") {
+    Object.assign(point, brushMotion(last, last ? dist(last.position, p) : 0,
+      now - (g.times.at(-1) ?? now), g.inkNib.width));
+  }
+  g.raw.push(point);
   g.times.push(e.timeStamp * 0.001);
   liveInk = null;
   if (performance.now() - g.checkpoint > 800) {
@@ -986,13 +993,14 @@ function begin(p, e) {
     const stylus = e.pointerType === "pen" && devices[device][1];
     const ballpointWidth = mode === "brush" && prefs.nib === "Pen"
       ? prefs.width : null;
+    const id = uid();
     gesture = {
-      type: "ink", stylus, ballpointWidth, inkNib: mode === "brush" ? inkNib(prefs) : undefined,
+      type: "ink", stylus, ballpointWidth, inkNib: mode === "brush" ? inkNib(prefs, parseInt(id.slice(0, 2), 16)) : undefined,
       prefs,
       previewStart: 0,
       prefix: {body: new Path2D(), core: ballpointWidth ? new Path2D() : null},
       marker: mode === "marker",
-      id: uid(),
+      id,
       raw: [],
       times: [],
       color: mode === "marker" ? markers[prefs.markerInk] : color(),
@@ -2082,14 +2090,19 @@ function positionPop(anchor) {
       : Math.max(5, r.top - ph - 5)) + "px";
 }
 function choices(label, items, value, select) {
-  if (label) pop.append($el("small", label));
   const row = $el("div");
   row.className = "choices";
+  if (label === "Brush finish") {
+    row.classList.add("brush-finish");
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", label);
+    row.append($el("small", "Finish"));
+  } else if (label) pop.append($el("small", label));
   if (label === "Writing tip") row.classList.add("writing-tips");
   items.forEach((item) => {
     const b = button(item, () => {
       select(item);
-      for (const el of row.children) {
+      for (const el of row.querySelectorAll("button")) {
         el.classList.toggle("active", el === b);
         el.setAttribute("aria-pressed", String(el === b));
       }
@@ -2480,9 +2493,12 @@ function toolOptions(anchor, id) {
           const force = 0.04 + 0.94 * Math.sin(Math.PI * t) ** 2;
           const position = [6 + t * 228, 13.5 - 7 * Math.sin(t * Math.PI * 3)];
           const last = points.at(-1);
+          const distance = last ? dist(last.position, position) : 0;
+          const elapsed = s.nib === "Brush" ? 0.005 + force * 0.008 : 0.008 + force * 0.018;
           const radius = sampledRadius(s, stylus ? force : null, last?.radius,
-            last ? dist(last.position, position) : 0, 0.008 + force * 0.018, i === 100, stylus);
-          points.push({position, radius});
+            distance, elapsed, i === 100, stylus);
+          const motion = s.nib === "Brush" ? brushMotion(last, distance, elapsed, s.width) : {};
+          points.push({position, radius, ...motion});
         }
         const sampleInk = makeInk(fittedInk(points, s, [], true, true), inks[s.ink]);
         sampleInk.inkNib = inkNib(s);
@@ -2497,6 +2513,10 @@ function toolOptions(anchor, id) {
       pop.oninput = () => queueMicrotask(showSample);
       choices("Writing tip", ["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"], p.nib, (v) => {
         setting("nib", v);
+        toolOptions(anchor, id);
+      });
+      if (p.nib === "Brush") choices("Brush finish", ["Inked", "Dry"], p.brushFinish, (value) => {
+        setting("brushFinish", value);
         toolOptions(anchor, id);
       });
       const supported = p.nib !== "Fineliner";

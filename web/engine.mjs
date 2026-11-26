@@ -124,6 +124,13 @@ export function makeInk(points, color, id = uid()) {
   );
   return { id, frame, content: { ink: { _0: points, _1: color } } };
 }
+export function brushContactBetween(a, b, t) {
+  return a.travel == null ? {} : {
+    travel: a.travel + ((b.travel ?? a.travel) - a.travel) * t,
+    speed: (a.speed ?? 215) + ((b.speed ?? a.speed ?? 215) - (a.speed ?? 215)) * t,
+  };
+}
+
 export function smooth(raw, amount, times = [], technical = false) {
   if (
     raw.length < 3 ||
@@ -195,6 +202,7 @@ export function smooth(raw, amount, times = [], technical = false) {
             3 * s * t * t * c2[k] +
             t * t * t * b[k],
         ),
+        ...brushContactBetween(pts[i], pts[i + 1], t),
         radius: pts[i].radius + (pts[i + 1].radius - pts[i].radius) * t,
       });
     }
@@ -230,6 +238,7 @@ function taperEnd(points, width, fromStart) {
       const t = (span - distance) / Math.max(0.000001, segment);
       const shoulder = {
         position: a.position.map((v, axis) => v + (b.position[axis] - v) * t),
+        ...brushContactBetween(a, b, t),
         radius: a.radius + (b.radius - a.radius) * t,
       };
       const endRadius = shoulder.radius * (1 - strength * (fromStart ? 0.72 : 0.92));
@@ -276,6 +285,7 @@ export function materialCorePath(o) {
     return {position:p.position, radius:p.radius * (0.36 + 0.64*coverage)};
   }));
   if (nib.tip !== "Brush") return null;
+  if (nib.finish === "Inked" || nib.finish === "Dry") return brushCore(pts, nib);
   const normals = pts.map((p, i) => {
     const d = sub(pts[Math.min(pts.length-1,i+1)].position, pts[Math.max(0,i-1)].position);
     const length = Math.hypot(...d);
@@ -286,6 +296,86 @@ export function materialCorePath(o) {
       position:p.position.map((x,k) => x + normals[i][k]*p.radius*offset), radius:p.radius*size,
     })))).join("");
 }
+// Sample a repeatable bristle pattern in stroke-local coordinates. Bundles touch
+// in wet passages and part progressively as a quick pull uses up the ink.
+function brushNoise(x, y, seed) {
+  const hash = (a, b) => {
+    let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(seed, 144269)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) >= 1e15 || Math.abs(y) >= 1e15) return 0.5;
+  const i = Math.floor(x), j = Math.floor(y);
+  const u = ease(x-i), v = ease(y-j);
+  const a = hash(i,j), b = hash(i,j+1);
+  return (a + (hash(i+1,j)-a)*u)*(1-v) + (b + (hash(i+1,j+1)-b)*u)*v;
+}
+function ease(x) {
+  x = clamp(x, 0, 1);
+  return x*x*(3-2*x);
+}
+function brushCore(points, nib) {
+  if (!points.length) return "";
+  const seed = nib.seed ?? 71;
+  if (nib.finish === "Inked" || points.length === 1) {
+    let travel = 0;
+    return outlinePoints(points.map((p,i) => {
+      if (i) travel += dist(p.position,points[i-1].position)/nib.width;
+      const phase = (p.travel ?? travel)*2.5;
+      return {position:p.position, radius:p.radius*(0.90+0.085*brushNoise(phase/1.2,2,seed))};
+    }));
+  }
+  const rows = [];
+  let fallback = 0;
+  for (let i=0; i<points.length; i++) {
+    const b = points[i], a = points[Math.max(0,i-1)];
+    const delta = dist(a.position,b.position);
+    const steps = Math.min(256, Math.max(1, Math.ceil(delta / Math.max(0.55,nib.width*0.46))));
+    for (let j=1; j<=steps; j++) {
+      const t = j/steps, contact = brushContactBetween(a,b,t);
+      rows.push({
+        x:a.position[0]+(b.position[0]-a.position[0])*t,
+        y:a.position[1]+(b.position[1]-a.position[1])*t,
+        radius:a.radius+(b.radius-a.radius)*t,
+        s:(contact.travel ?? (fallback+delta*t)/nib.width)*2.5,
+        fast:ease(((contact.speed ?? 215)-65)/230),
+      });
+    }
+    fallback += delta;
+  }
+  const lanes = 11, bands = Array.from({length:lanes},()=>({left:[],right:[]}));
+  const paths = [];
+  function close(band) {
+    if (band.left.length > 1)
+      paths.push("M"+band.left.join("L")+"L"+band.right.reverse().join("L")+"Z");
+    band.left.length = band.right.length = 0;
+  }
+  for (let i=0; i<rows.length; i++) {
+    const r=rows[i], prev=rows[Math.max(0,i-1)], next=rows[Math.min(rows.length-1,i+1)];
+    const dx=next.x-prev.x, dy=next.y-prev.y, length=Math.hypot(dx,dy);
+    const nx=length ? -dy/length : 0, ny=length ? dx/length : 1;
+    const s=r.s, drift=(brushNoise(s/8,0,seed+1)-0.5)*0.30;
+    const depleted=ease((s-6)/38), light=ease(1-1.7*r.radius/nib.width);
+    const fast=r.fast;
+    for (let k=0; k<lanes; k++) {
+      const n=(2*k+1)/lanes-1, edge=Math.abs(n);
+      const hair=brushNoise(s/8.6,(n+drift)*9,seed+5);
+      const patch=brushNoise(s/7.4,n*1.6,seed+6);
+      const opening=0.085+0.22*fast+0.22*edge+0.28*depleted*fast+0.15*light
+        -0.20*(1-depleted)*(1-edge)+0.32*(patch-0.5);
+      const coverage=1-ease((opening-hair+0.065)/0.25);
+      const half=(1.06/lanes)*coverage;
+      const band=bands[k];
+      if (half<0.003) { close(band); continue; }
+      const left=r.radius*Math.max(-1,n-half), right=r.radius*Math.min(1,n+half);
+      band.left.push(pair([r.x+nx*left,r.y+ny*left]));
+      band.right.push(pair([r.x+nx*right,r.y+ny*right]));
+    }
+  }
+  bands.forEach(close);
+  return paths.join("");
+}
+
 function outlinePoints(samples, broad = false) {
   const pts = broad ? samples.map(({position:[x,y],radius}) => ({
     position:[x*nibCos + y*nibSin, (-x*nibSin + y*nibCos)/0.30], radius,
@@ -412,6 +502,7 @@ export function transform(o, anchor, scale, dx, dy) {
       ...(o.ballpointWidth ? {ballpointWidth: o.ballpointWidth * scale} : {}),
       ...makeInk(
         o.content.ink._0.map((p) => ({
+          ...p,
           position: apply(p.position),
           radius: p.radius * scale,
         })),
@@ -509,6 +600,7 @@ export function cleared(objects, page, deleting = false) {
         let t = k / steps;
         add({
           position: a.position.map((v, j) => v + (p.position[j] - v) * t),
+          ...brushContactBetween(a, p, t),
           radius: a.radius + (p.radius - a.radius) * t,
         });
       }
@@ -620,6 +712,7 @@ function clipInk(o, top, bottom) {
   }
   const interp = (a, b, t) => ({
     position: a.position.map((v, i) => v + t * (b.position[i] - v)),
+    ...brushContactBetween(a, b, t),
     radius: a.radius + t * (b.radius - a.radius),
   });
   for (let i = 1; i < points.length; i++) {

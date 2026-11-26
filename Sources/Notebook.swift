@@ -24,17 +24,33 @@ struct InkColor: Codable, Equatable {
 struct InkPoint: Codable, Equatable {
   var position: CGPoint
   var radius: CGFloat
+  // Travel in nib widths keeps paper marks in place when the stroke is resized or split.
+  var travel: CGFloat? = nil
+  var speed: CGFloat? = nil
+
+  mutating func recordBrushMotion(after previous: InkPoint?, width: CGFloat, elapsed: Double) {
+    let distance = previous.map { $0.position.distance(to: position) } ?? 0
+    travel = (previous?.travel ?? 0) + distance / width
+    let velocity = min(1200, distance / max(0.001, elapsed))
+    speed = (previous?.travel ?? 0) > 0 ? (previous?.speed ?? velocity)*0.72 + velocity*0.28 : velocity
+  }
 
   func interpolated(to other: Self, by t: CGFloat) -> Self {
     .init(
       position: position + (other.position - position) * t,
-      radius: radius + (other.radius - radius) * t)
+      radius: radius + (other.radius - radius) * t,
+      travel: travel.map { $0 + ((other.travel ?? $0) - $0) * t },
+      speed: speed.map { $0 + ((other.speed ?? $0) - $0) * t })
   }
 }
+
+enum BrushFinish: String, Codable, CaseIterable { case inked = "Inked", dry = "Dry" }
 
 struct InkNib: Codable, Equatable {
   let tip: String
   var width: CGFloat
+  var finish: BrushFinish? = nil
+  var seed: Int? = nil
 }
 
 struct NoteObject: Codable, Equatable, Identifiable {
@@ -68,7 +84,8 @@ struct NoteObject: Codable, Equatable, Identifiable {
     if case .ink(let points, let color) = content {
       let ink = points.map {
         InkPoint(
-          position: anchor + ($0.position - anchor) * scale + offset, radius: $0.radius * scale)
+          position: anchor + ($0.position - anchor) * scale + offset, radius: $0.radius * scale,
+          travel: $0.travel, speed: $0.speed)
       }
       guard let moved = Self.ink(ink, color: color, id: id) else { return self }
       result.frame = moved.frame
@@ -281,7 +298,9 @@ func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = [],
       let s = 1 - t
       let first = a.position * (s * s * s) + c1 * (3 * s * s * t)
       let second = c2 * (3 * s * t * t) + b.position * (t * t * t)
-      result.append(.init(position: first + second, radius: a.radius + (b.radius - a.radius) * t))
+      var sample = a.interpolated(to: b, by: t)
+      sample.position = first + second
+      result.append(sample)
     }
   }
   return result
