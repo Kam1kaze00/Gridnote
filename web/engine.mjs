@@ -250,7 +250,7 @@ const pair = (p) => p.map(fmt).join(" ");
 const outlines = new WeakMap();
 export function inkPath(o) {
   if (outlines.has(o)) return outlines.get(o);
-  const path = outlinePoints(o.content.ink._0);
+  const path = outlinePoints(o.content.ink._0, o.inkNib?.tip === "Fountain");
   outlines.set(o, path);
   return path;
 }
@@ -262,20 +262,41 @@ export function ballpointCorePath(o) {
     return {position, radius: radius * (0.16 + 0.84 * coverage)};
   }));
 }
-function outlinePoints(pts) {
+const nibAngle = Math.PI / 6, nibCos = Math.cos(nibAngle), nibSin = Math.sin(nibAngle);
+export function materialCorePath(o) {
+  const nib = o.inkNib, pts = o.content.ink._0;
+  if (!nib || !Number.isFinite(nib.width) || nib.width <= 0) return ballpointCorePath(o);
+  if (nib.tip === "Fountain")
+    return outlinePoints(pts.map(p => ({
+      position:[p.position[0]+0.17*p.radius*nibCos, p.position[1]+0.17*p.radius*nibSin],
+      radius:p.radius*clamp(2*p.radius/nib.width - 0.35, 0.36, 0.84),
+    })), true);
+  if (nib.tip === "Pencil") return outlinePoints(pts.map(p => {
+    const coverage = clamp((2*p.radius/nib.width - 0.32)/1.35, 0, 1);
+    return {position:p.position, radius:p.radius * (0.36 + 0.64*coverage)};
+  }));
+  if (nib.tip !== "Brush") return null;
+  const normals = pts.map((p, i) => {
+    const d = sub(pts[Math.min(pts.length-1,i+1)].position, pts[Math.max(0,i-1)].position);
+    const length = Math.hypot(...d);
+    return length > 0.00001 ? [-d[1]/length, d[0]/length] : [0,1];
+  });
+  return [[-0.23,0.71],[0.64,0.115],[0.91,0.052]].map(([offset,size]) =>
+    outlinePoints(pts.map((p,i) => ({
+      position:p.position.map((x,k) => x + normals[i][k]*p.radius*offset), radius:p.radius*size,
+    })))).join("");
+}
+function outlinePoints(samples, broad = false) {
+  const pts = broad ? samples.map(({position:[x,y],radius}) => ({
+    position:[x*nibCos + y*nibSin, (-x*nibSin + y*nibCos)/0.30], radius,
+  })) : samples;
+  const vertex = broad ? ([x,y]) => pair([x*nibCos - y*0.30*nibSin, x*nibSin + y*0.30*nibCos]) : pair;
+  const arc = r => "A" + pair([r, broad ? r*0.30 : r]) + " " + (broad ? "30" : "0") + " 0 0 ";
   let path = "";
-  const circle = ({ position: [x, y], radius: r }) =>
-    "M" +
-    pair([x + r, y]) +
-    "a" +
-    pair([r, r]) +
-    " 0 1 0 " +
-    pair([-2 * r, 0]) +
-    "a" +
-    pair([r, r]) +
-    " 0 1 0 " +
-    pair([2 * r, 0]) +
-    "Z";
+  const circle = ({position:[x,y], radius:r}) => {
+    const right = vertex([x+r,y]), left = vertex([x-r,y]);
+    return "M" + right + arc(r) + left + arc(r) + right + "Z";
+  };
   const span = (a, b) => {
     const left = [],
       right = [];
@@ -300,18 +321,9 @@ function outlinePoints(pts) {
       start = pts[a].radius;
     path +=
       "M" +
-      left.map(pair).join("L") +
-      "A" +
-      pair([end, end]) +
-      " 0 0 0 " +
-      pair(right.at(-1));
+      left.map(vertex).join("L") + arc(end) + vertex(right.at(-1));
     path +=
-      "L" +
-      right.reverse().slice(1).map(pair).join("L") +
-      "A" +
-      pair([start, start]) +
-      " 0 0 0 " +
-      pair(left[0]) +
+      "L" + right.reverse().slice(1).map(vertex).join("L") + arc(start) + vertex(left[0]) +
       "Z";
   };
   if (pts.length === 1) path = circle(pts[0]);
@@ -396,6 +408,7 @@ export function transform(o, anchor, scale, dx, dy) {
   if (kind(o) === "ink")
     return {
       ...o,
+      ...(o.inkNib ? {inkNib: {...o.inkNib, width: o.inkNib.width * scale}} : {}),
       ...(o.ballpointWidth ? {ballpointWidth: o.ballpointWidth * scale} : {}),
       ...makeInk(
         o.content.ink._0.map((p) => ({

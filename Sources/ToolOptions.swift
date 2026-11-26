@@ -37,6 +37,7 @@ final class ToolOptionsController: NSViewController {
   private var responseSlider: NSSlider?
   private var flowRow: NSView?
   var didResize: ((CGSize) -> Void)?
+  private var tipButtons: [NSButton] = []
   private var pressureSwitch: NSButton?
   private var preview: BrushSample?
   private var tableFields: [NSTextField] = []
@@ -83,11 +84,24 @@ final class ToolOptionsController: NSViewController {
       sample.widthAnchor.constraint(equalToConstant: 248).isActive = true
       column.addArrangedSubview(sample)
       preview = sample
-      let nibs = WritingTip.allCases
-      segment(
-        "Writing tip", labels: nibs.map(\.rawValue),
-        selected: nibs.firstIndex(of: preferences.nib) ?? 1,
-        action: #selector(nibChanged(_:)))
+      column.addArrangedSubview(chromeLabel("Writing tip", size: 12, weight: .medium))
+      let tips = WritingTip.allCases
+      let rows = [Array(tips.prefix(3)), Array(tips.suffix(3))].map { group in
+        let buttons = group.map { tip in
+          let button = NSButton(title: tip.rawValue, target: self, action: #selector(nibChanged(_:)))
+          button.setButtonType(.toggle)
+          button.bezelStyle = .rounded
+          button.state = tip == preferences.nib ? .on : .off
+          button.setAccessibilityLabel(tip.rawValue)
+          tipButtons.append(button)
+          return button
+        }
+        let row = chromeStack(buttons, spacing: 3)
+        row.distribution = .fillEqually
+        row.widthAnchor.constraint(equalToConstant: 248).isActive = true
+        return row
+      }
+      column.addArrangedSubview(chromeStack(rows, spacing: 2, horizontal: false))
       let toggle = NSButton(
         checkboxWithTitle: "Use pen pressure", target: self, action: #selector(pressureChanged(_:)))
       pressureSwitch = toggle
@@ -202,8 +216,10 @@ final class ToolOptionsController: NSViewController {
     canvas.refreshTool()
     didRestore?()
   }
-  @objc private func nibChanged(_ sender: NSSegmentedControl) {
-    preferences.nib = WritingTip.allCases[sender.selectedSegment]
+  @objc private func nibChanged(_ sender: NSButton) {
+    guard let tip = WritingTip(rawValue: sender.title) else { return }
+    preferences.nib = tip
+    for button in tipButtons { button.state = button === sender ? .on : .off }
     if let widthSlider { widthSlider.doubleValue = preferences.width; display(widthSlider.tag) }
     flowRow?.isHidden = preferences.nib != .pen
     syncPressure()
@@ -459,7 +475,7 @@ private final class BrushSample: NSView {
     }
     let ball = style.tip == .pen
     PaperRenderer().footprint(style.fittedInk(points, smoothing: preferences.smoothing, lifted: true),
-                              ballpointWidth: ball ? style.width : nil)
-      .paint(color: InkColor.colors[preferences.colorIndex].1, flow: preferences.penFlow, context: context)
+                              ballpointWidth: ball ? style.width : nil, nib: style.inkNib)
+      .paint(color: InkColor.colors[preferences.colorIndex].1, flow: ball ? preferences.penFlow : 1, context: context)
   }
 }

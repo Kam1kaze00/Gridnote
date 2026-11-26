@@ -1,10 +1,13 @@
 import AppKit
 
 enum WritingTip: String, CaseIterable {
-  case pen = "Pen", brush = "Brush", fineliner = "Fineliner"
+  case pen = "Pen", brush = "Brush", fineliner = "Fineliner", gel = "Gel", fountain = "Fountain", pencil = "Pencil"
 
   var defaultWidth: Double {
     switch self {
+    case .gel: return 2.5
+    case .fountain: return 4.2
+    case .pencil: return 2.1
     case .pen: return 1.5
     case .brush: return 2
     case .fineliner: return 0.9
@@ -18,12 +21,21 @@ struct WritingStyle {
   let usesPressure: Bool
   let exponent: Double
 
+  var inkNib: InkNib? {
+    [.brush, .gel, .fountain, .pencil].contains(tip) ? InkNib(tip: tip.rawValue, width: width) : nil
+  }
   func radius(at force: Double?) -> CGFloat {
     guard usesPressure, tip != .fineliner, let force, force.isFinite else { return width / 2 }
     let level = pow(min(1, max(0, force)), exponent)
-    let weight = tip == .pen
-      ? 0.74 + 0.36 * level * (0.72 + 0.28 * level)
-      : 0.08 + 3.05 * level / (0.70 + 0.30 * level)
+    let weight: Double
+    switch tip {
+    case .pen: weight = 0.74 + 0.36 * level * (0.72 + 0.28 * level)
+    case .gel: weight = 0.94 + 0.12 * level
+    case .fountain: weight = 0.75 + 0.48 * level
+    case .pencil: weight = 0.32 + 1.35 * level
+    case .brush: weight = 0.08 + 3.05 * level / (0.70 + 0.30 * level)
+    case .fineliner: weight = 1
+    }
     return width * weight / 2
   }
 
@@ -36,7 +48,7 @@ struct WritingStyle {
     }
     let dt = max(0.001, elapsed)
     var contact = force
-    if contact == nil && tip == .brush && !stylus {
+    if contact == nil && tip != .pen && !stylus {
       // A mouse has no load sensor. A slow pull spreads the brush, a flick narrows it.
       let speed = Double(distance) / dt
       contact = previous == nil ? 0.42 : 0.22 + 0.54 / (1 + speed / 230)
@@ -52,7 +64,8 @@ struct WritingStyle {
       }
     }
     guard let contact else { return previous ?? width / 2 }
-    let spread = tip == .brush ? 1 + 0.65 * min(1, abs(crossTilt)) * contact : 1
+    let tiltGain: CGFloat = tip == .brush ? 0.65 : tip == .pencil ? 1.5 : 0
+    let spread = 1 + tiltGain * min(1, abs(crossTilt)) * contact
     let target = radius(at: contact) * spread
     guard let previous else { return target }
     let response = tip == .brush && target > previous ? 0.008 : 0.0035
@@ -165,10 +178,16 @@ final class PenPreferences {
   func toolAppearance(_ tool: NoteTool) -> (name: String, symbol: String) {
     switch tool {
     case .brush:
-      return (
-        nib.rawValue,
-        nib == .brush ? "paintbrush.pointed" : nib == .fineliner ? "pencil.line" : "pencil.tip"
-      )
+      let symbol: String
+      switch nib {
+      case .pen: symbol = "pencil.tip"
+      case .brush: symbol = "paintbrush.pointed"
+      case .fineliner: symbol = "pencil.line"
+      case .gel: symbol = "highlighter"
+      case .fountain: symbol = "fountainpen.tip"
+      case .pencil: symbol = "pencil"
+      }
+      return (nib.rawValue, symbol)
     case .selector:
       return (selectionMode.rawValue, [.tap: "cursorarrow", .box: "rectangle.dashed", .lasso: "lasso"][selectionMode]!)
     case .eraser:
@@ -644,7 +663,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
           strokeStyle.fittedInk(
             Array(ink[start...end]), smoothing: inkSmoothing, times: Array(inkTimes[start...end]),
             starts: start == 0, marker: tool == .marker),
-          ballpointWidth: ballpointWidth)
+          ballpointWidth: ballpointWidth, nib: strokeStyle.inkNib)
       }
       while ink.count - previewStart > 100 {
         let end = previewStart + 96
@@ -653,7 +672,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       }
       let tail = ink.count > previewStart ? section(previewStart, ink.count - 1) : nil
       let visible = liveSegments.filter { $0.body.boundingBoxOfPath.intersects(dirtyRect) }
-      InkFootprint.paint(color: inkColor, hasCore: ballpointWidth != nil, flow: inkFlow, context: context) { core in
+      InkFootprint.paint(color: inkColor, hasCore: tail?.core != nil || visible.first?.core != nil, nib: strokeStyle.inkNib, flow: inkFlow, context: context) { core in
         for path in visible { path.add(to: context, core: core) }
         tail?.add(to: context, core: core)
       }
@@ -762,7 +781,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     let delta = point - (ink.last?.position ?? point)
     let distance = delta.length
     var crossTilt: CGFloat = 0
-    if strokeStyle.tip == .brush, event.isTabletSample, distance > 0.01 {
+    if (strokeStyle.tip == .brush || strokeStyle.tip == .pencil), event.isTabletSample, distance > 0.01 {
       let tilt = event.tilt
       crossTilt = (tilt.x * delta.y - tilt.y * delta.x) / distance
     }
@@ -1695,6 +1714,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
     var object = NoteObject.ink(
       strokeStyle.fittedInk(ink, smoothing: inkSmoothing, times: inkTimes, lifted: brushLifted,
                             marker: tool == .marker), color: color, id: draftID)
+    object?.inkNib = strokeStyle.inkNib
     object?.ballpointWidth = ballpointWidth
     if ballpointWidth != nil && inkFlow < 1 { object?.opacity = inkFlow }
     if tool == .marker {

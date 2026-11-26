@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct InkFootprint {
   let body: CGPath
   let core: CGPath?
+  var nib: InkNib? = nil
 
   func add(to context: CGContext, core onlyCore: Bool) {
     if onlyCore {
@@ -12,24 +13,25 @@ struct InkFootprint {
     } else { context.addPath(body) }
   }
 
-  static func paint(color: InkColor, hasCore: Bool, flow: CGFloat = 1, context: CGContext, add: (Bool) -> Void) {
+  static func paint(color: InkColor, hasCore: Bool, nib: InkNib? = nil, flow: CGFloat = 1, context: CGContext, add: (Bool) -> Void) {
     context.saveGState()
     defer { context.restoreGState() }
     context.setFillColor(color.cg)
     if hasCore {
       context.saveGState()
-      context.setAlpha(0.43 * flow)
+      context.setAlpha(inkLayerOpacity(nib).body * flow)
       add(false)
       context.fillPath()
       context.restoreGState()
-      context.setAlpha(flow)
+      context.setAlpha(inkLayerOpacity(nib).detail * flow)
+      if nib?.tip == "Pencil" { PaperTooth.use(color, in: context) }
     }
     add(hasCore)
     context.fillPath()
   }
 
   func paint(color: InkColor, flow: CGFloat = 1, context: CGContext) {
-    Self.paint(color: color, hasCore: core != nil, flow: flow, context: context) { add(to: context, core: $0) }
+    Self.paint(color: color, hasCore: core != nil, nib: nib, flow: flow, context: context) { add(to: context, core: $0) }
   }
 }
 
@@ -130,10 +132,10 @@ final class PaperRenderer {
     case .ink(let points, let ink):
       let key = object.id as NSUUID
       let path: InkFootprint
-      if let cached = strokes.object(forKey: key), cached.width == object.ballpointWidth, cached.points == points {
+      if let cached = strokes.object(forKey: key), cached.width == object.ballpointWidth, cached.path.nib == object.inkNib, cached.points == points {
         path = cached.path
       } else {
-        path = footprint(points, ballpointWidth: object.ballpointWidth)
+        path = footprint(points, ballpointWidth: object.ballpointWidth, nib: object.inkNib)
         strokes.setObject(
           StrokeBox(points: points, width: object.ballpointWidth, path: path), forKey: key,
           cost: points.count * (path.core == nil ? 80 : 160))
@@ -206,10 +208,11 @@ final class PaperRenderer {
     }
   }
 
-  func footprint(_ points: [InkPoint], ballpointWidth: CGFloat?) -> InkFootprint {
+  func footprint(_ points: [InkPoint], ballpointWidth: CGFloat?, nib: InkNib? = nil) -> InkFootprint {
+    if let nib, let custom = materialFootprint(points, nib: nib) { return custom }
     let body = outline(points)
     guard let width = ballpointWidth, width.isFinite, width > 0 else {
-      return InkFootprint(body: body, core: nil)
+      return InkFootprint(body: body, core: nil, nib: nib)
     }
     // The ball leaves a narrow track. Increasing load fills more of that track with dense ink.
     let core = points.map { point -> InkPoint in

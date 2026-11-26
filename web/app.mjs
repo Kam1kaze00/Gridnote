@@ -621,6 +621,9 @@ function backgroundReady() {
   if (inkBackdrop) inkBackdrop.book = null;
   draw();
 }
+function inkNib(prefs) {
+  return ["Brush","Gel","Fountain","Pencil"].includes(prefs.nib) ? {tip:prefs.nib, width:prefs.width} : undefined;
+}
 function paintLiveInk(g) {
   // Freeze completed portions of the preview. The full-resolution stroke is
   // fitted once at commit, using all original pressure and timing samples.
@@ -629,25 +632,26 @@ function paintLiveInk(g) {
       times = g.times.slice(start, end);
     const o = makeInk(fittedInk(raw, g.prefs, times, start === 0, false, g.marker), g.color, g.id);
     o.ballpointWidth = g.ballpointWidth;
+    o.inkNib = g.inkNib;
     return inkFootprint(o);
   }
   function add(target, part) {
     target.body.addPath(part.body);
-    if (part.core) target.core.addPath(part.core);
+    if (part.core) { target.core ??= new Path2D(); target.core.addPath(part.core); }
   }
   while (g.raw.length - g.previewStart > 100) {
     const end = g.previewStart + 96;
     add(g.prefix, section(g.previewStart, end + 1));
     g.previewStart = end;
   }
-  const outline = {body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
+  const outline = {tip:g.inkNib?.tip, body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
   add(outline, section(g.previewStart, g.raw.length));
   ctx.save();
   if (g.marker) {
     ctx.globalAlpha = g.prefs.opacity;
     ctx.globalCompositeOperation = "multiply";
   }
-  paintFootprint(ctx, outline, g.color, g.prefs.penFlow);
+  paintFootprint(ctx, outline, g.color, g.ballpointWidth ? g.prefs.penFlow : 1);
   ctx.restore();
 }
 function paint() {
@@ -887,7 +891,7 @@ function append(e, p, isUp = false) {
   const g = gesture, last = g.raw.at(-1), now = e.timeStamp * 0.001;
   const distance = last ? dist(last.position, p) : 0;
   let crossTilt = 0;
-  if (g.stylus && g.prefs.nib === "Brush" && distance > 0.01) {
+  if (g.stylus && (g.prefs.nib === "Brush" || g.prefs.nib === "Pencil") && distance > 0.01) {
     crossTilt = ((e.tiltX || 0) * (p[1] - last.position[1]) -
       (e.tiltY || 0) * (p[0] - last.position[0])) / (90 * distance);
   }
@@ -927,6 +931,7 @@ function currentInk() {
       gesture.color,
       gesture.id,
     );
+    if (gesture.inkNib) liveInk.inkNib = gesture.inkNib;
     if (gesture.ballpointWidth) {
       liveInk.ballpointWidth = gesture.ballpointWidth;
       if (gesture.prefs.penFlow < 1) liveInk.opacity = gesture.prefs.penFlow;
@@ -982,7 +987,7 @@ function begin(p, e) {
     const ballpointWidth = mode === "brush" && prefs.nib === "Pen"
       ? prefs.width : null;
     gesture = {
-      type: "ink", stylus, ballpointWidth,
+      type: "ink", stylus, ballpointWidth, inkNib: mode === "brush" ? inkNib(prefs) : undefined,
       prefs,
       previewStart: 0,
       prefix: {body: new Path2D(), core: ballpointWidth ? new Path2D() : null},
@@ -2080,6 +2085,7 @@ function choices(label, items, value, select) {
   if (label) pop.append($el("small", label));
   const row = $el("div");
   row.className = "choices";
+  if (label === "Writing tip") row.classList.add("writing-tips");
   items.forEach((item) => {
     const b = button(item, () => {
       select(item);
@@ -2479,16 +2485,17 @@ function toolOptions(anchor, id) {
           points.push({position, radius});
         }
         const sampleInk = makeInk(fittedInk(points, s, [], true, true), inks[s.ink]);
+        sampleInk.inkNib = inkNib(s);
         if (s.nib === "Pen") sampleInk.ballpointWidth = s.width;
         ctx.save();
         ctx.scale(2, 2);
-        paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink], s.penFlow);
+        paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink], s.nib === "Pen" ? s.penFlow : 1);
         ctx.restore();
       }
       redrawSample = showSample;
       showSample();
       pop.oninput = () => queueMicrotask(showSample);
-      choices("Writing tip", ["Pen", "Brush", "Fineliner"], p.nib, (v) => {
+      choices("Writing tip", ["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"], p.nib, (v) => {
         setting("nib", v);
         toolOptions(anchor, id);
       });
@@ -3147,7 +3154,7 @@ $("code-toggle").onclick = () => {
     );
 };
 const iconModes = {
-  brush: { Pen: "pen", Brush: "brush", Fineliner: "fineliner" },
+  brush: { Pen: "pen", Brush: "brush", Fineliner: "fineliner", Gel: "gel", Fountain: "fountain", Pencil: "pencil" },
   selector: { Tap: "tap", Rectangle: "box-select", Lasso: "lasso" },
   eraser: { Regular: "regular", Stroke: "stroke", Rectangle: "region-erase", Lasso: "lasso-erase" },
   shapes: { Line: "line", Arrow: "arrow", Box: "box", Oval: "oval", "X–Y axes": "axes" },
