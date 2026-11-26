@@ -93,6 +93,12 @@ final class NotebookStorage {
     guard notebook.version == 1 else {
       throw StorageError("This notebook requires a newer version of Gridnote.")
     }
+    let limit = paperSize.height * 100_000
+    func coordinate(_ value: CGFloat) -> Bool { value.isFinite && abs(value) <= limit }
+    func validFrame(_ f: CGRect) -> Bool {
+      [f.origin.x, f.origin.y, f.size.width, f.size.height].allSatisfy(coordinate)
+        && f.size.width > 0 && f.size.height > 0 && f.maxY < limit
+    }
     guard (1...100000).contains(notebook.minimumPages ?? 1), notebook.sourcePages >= 0,
       notebook.sourcePages <= 100_000,
       notebook.sourcePageMap.map({
@@ -101,25 +107,25 @@ final class NotebookStorage {
       (notebook.pagePaper ?? [:]).keys.allSatisfy({ (0..<100_000).contains($0) }),
       Set(notebook.objects.map(\.id)).count == notebook.objects.count,
       notebook.objects.allSatisfy({ object in
-        let f = object.frame
-        return [f.minX, f.minY, f.width, f.height].allSatisfy(\.isFinite) && f.width > 0
-          && f.height > 0
-          && f.maxY < paperSize.height * 100_000
+        guard validFrame(object.frame), object.layoutFrame.map(validFrame) ?? true else { return false }
+        if case .ink(let points, _) = object.content {
+          return !points.isEmpty && points.allSatisfy {
+            coordinate($0.position.x) && coordinate($0.position.y) && coordinate($0.radius) && $0.radius > 0
+          }
+        }
+        return true
       })
     else { throw StorageError("This notebook contains invalid page coordinates.") }
-    guard
-      notebook.sourcePageMap.map({
-        $0.count == notebook.sourcePages && $0.allSatisfy { $0 >= -1 && $0 < 100000 }
-      }) ?? true,
-      notebook.objects.allSatisfy({ o in
+    guard notebook.objects.allSatisfy({ o in
         if case .text(_, _, let size) = o.content, !(size > 0 && size <= 1_000_000) { return false }
         guard let grid = o.table else { return true }
         return (1...40).contains(grid.rows) && (1...16).contains(grid.columns)
           && grid.cells.count == grid.rows * grid.columns
           && (grid.formats ?? [:]).allSatisfy { key, f in
-            let rc = key.split(separator: ":").compactMap { Int($0) }
-            return rc.count == 2 && (0..<grid.rows).contains(rc[0])
-              && (0..<grid.columns).contains(rc[1])
+            let rc = key.split(separator: ":", omittingEmptySubsequences: false)
+            guard rc.count == 2, let row = Int(rc[0]), let column = Int(rc[1]),
+              key == "\(row):\(column)" else { return false }
+            return (0..<grid.rows).contains(row) && (0..<grid.columns).contains(column)
               && f.size > 0 && f.size <= 1_000_000 && (0...7).contains(f.traits)
               && [f.color.r, f.color.g, f.color.b].allSatisfy { (0...1).contains($0) }
           }

@@ -1,0 +1,48 @@
+name: Gridnote
+options:
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    TARGETED_DEVICE_FAMILY: "2"
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.5.3"
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  Gridnote:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - Resources
+      - path: public
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gridnote.notebook.ipad
+        INFOPLIST_FILE: Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+  GridnoteUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Gridnote
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gridnote.notebook.ipad.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Gridnote:
+    build:
+      targets:
+        Gridnote: all
+    test:
+      targets: [GridnoteUITests]
+    archive:
+      config: Release

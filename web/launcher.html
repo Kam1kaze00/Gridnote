@@ -37,7 +37,7 @@
       const bridge = window.webkit?.messageHandlers?.gridnoteLauncher;
       if (!bridge) location.replace("./");
       else {
-        GridnoteLauncher.mount(document.getElementById("launcher"), {
+        globalThis.GridnoteLauncher.mount(document.getElementById("launcher"), {
           ...window.launchOptions,
           start: (action) => bridge.postMessage({ action }),
         });

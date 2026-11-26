@@ -105,8 +105,34 @@ async function main() {
       return [migrated.defaultPaper, migrated.pagePaper[0]];
     });
     assert.deepEqual(paper, [{ ruling: "Dotted", tint: "Sage" }, { ruling: "Ruled", tint: "Ivory" }]);
+    const rejectedPaper = await page.evaluate(async () => {
+      const { blank, validate } = await import("./engine.mjs");
+      return ["NaN", "-1", "100000"].every(index => {
+        const notebook = blank();
+        notebook.pagePaper = { [index]: { ruling: "Grid", tint: "White" } };
+        try { validate(notebook); return false; } catch { return true; }
+      });
+    });
+    assert(rejectedPaper, "damaged paper indexes are reported before replacing the current notebook");
     assert(!(await page.locator("#sheet").isVisible()));
     await page.click("#new");
+    await page.waitForFunction(async () => Boolean(await (await import("./store.mjs")).lastNotebookInfo()));
+    const lastSaved = await page.evaluate(async () => {
+      const { loadState } = await import("./store.mjs");
+      const transaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function(stores, mode, ...args) {
+        if (mode === "readwrite" && Array.isArray(stores) && stores.includes("assets"))
+          throw new DOMException("Storage full", "QuotaExceededError");
+        return transaction.call(this, stores, mode, ...args);
+      };
+      return loadState("last");
+    });
+    await page.click("#files");
+    await page.getByRole("button", { name: "New notebook", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("#saved").textContent === "Save error");
+    await page.reload();
+    await page.click("#continue");
+    assert.equal(await page.evaluate(async () => (await import("./store.mjs")).loadState("last")), lastSaved);
     await page.waitForSelector("#tool-table");
     await page.click("#tool-brush");
     await page.getByRole("button", { name: "Fineliner", exact: true }).click();
@@ -279,6 +305,11 @@ async function main() {
     const shared = await page.evaluate(() => window.sharedBytes);
     assert.deepEqual(bytes, Buffer.from(shared));
     await page.click("#pdfclose");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width === 0);
+    await page.click("#preview");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width > 0);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("pdfcanvas").width === 0);
     const recognition = await page.evaluate(async () => {
       const { scanProblems } = await import("./study.mjs"),
         { blank } = await import("./engine.mjs");

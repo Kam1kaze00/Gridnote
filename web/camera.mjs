@@ -205,7 +205,7 @@ export async function capturePhoto() {
         image.src = url;
         await image.decode();
         frame(image, image.naturalWidth, image.naturalHeight);
-      } catch (e) {
+      } catch {
         info.textContent =
           "This photo could not be read. Try capturing it again.";
       } finally {
