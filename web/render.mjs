@@ -1,3 +1,4 @@
+import {grainReady, grainIndex, grainPattern, printGrain} from "./writer-grain.mjs";
 import {inkLayers, graphitePattern, graphitePDFFill} from "./ink-materials.mjs";
 import { sourceIndex } from "./engine.mjs";
 import {
@@ -137,21 +138,23 @@ export function paintPaper(ctx, page, design) {
   }
   ctx.restore();
 }
+export {grainReady};
 export {textLines} from "./blocks.mjs";
 export function inkFootprint(o) {
   const core = materialCorePath(o);
-  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null, tip:o.inkNib?.tip, finish:o.inkNib?.finish};
+  return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null, nib:o.inkNib};
 }
 export function paintFootprint(ctx, paths, color, flow = 1) {
-  ctx.fillStyle = rgb(color);
+  const nib = paths.nib, grain = grainIndex(nib);
+  ctx.fillStyle = grain >= 0 ? grainPattern(ctx, grain, color) : rgb(color);
   if (paths.core) {
     ctx.save();
     const original = ctx.globalAlpha;
-    const [body, detail] = inkLayers(paths.tip, paths.finish);
+    const [body, detail] = inkLayers(nib?.tip, nib?.finish);
     ctx.globalAlpha = original * flow * body;
     ctx.fill(paths.body);
     ctx.globalAlpha = original * flow * detail;
-    if (paths.tip === "Pencil") ctx.fillStyle = graphitePattern(ctx, rgb(color));
+    if (nib?.tip === "Pencil" && grain < 0) ctx.fillStyle = graphitePattern(ctx, rgb(color));
     ctx.fill(paths.core);
     ctx.restore();
   } else ctx.fill(paths.body);
@@ -208,11 +211,11 @@ export function drawPDFImage(ctx, img, index) {
   ctx.drawImage(img, (W - w) / 2, index * H + (H - h) / 2, w, h);
 }
 export async function makePDF(book, source, progress) {
-  const lib = await import("./vendor/pdf-lib.mjs"),
+  const [lib] = await Promise.all([import("./vendor/pdf-lib.mjs"), grainReady]),
     doc = await lib.PDFDocument.create();
   doc.setCreator("Gridnote");
   doc.setProducer("Gridnote");
-  const pngs = new Map(), graphite = new Map();
+  const pngs = new Map(), graphite = new Map(), grainCache = new Map();
   const total = pageCount(book);
   for (let i = 0; i < total; i++) {
     progress?.(i + 1, total);
@@ -316,6 +319,13 @@ export async function makePDF(book, source, progress) {
           blendMode:
             o.instrument === "marker" ? lib.BlendMode.Multiply : undefined,
         };
+        const grain = grainIndex(o.inkNib);
+        if (grain >= 0) {
+          printGrain(lib, doc, page, grainCache, grain, c, inkPath(o), H+top, options.opacity);
+          if (core) printGrain(lib, doc, page, grainCache, grain, c, core, H+top,
+            inkLayers(o.inkNib.tip, o.inkNib.finish)[1] * (o.opacity ?? 1));
+          continue;
+        }
         page.drawSvgPath(inkPath(o), options);
         if (core && o.inkNib?.tip === "Pencil") graphitePDFFill(lib, doc, page, graphite, c, core, H+top);
         else if (core) page.drawSvgPath(core, {...options, opacity: inkLayers(o.inkNib?.tip, o.inkNib?.finish)[1] * (o.opacity ?? 1)});

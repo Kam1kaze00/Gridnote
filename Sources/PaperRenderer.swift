@@ -17,17 +17,27 @@ struct InkFootprint {
     context.saveGState()
     defer { context.restoreGState() }
     context.setFillColor(color.cg)
+    let tile = WriterGrain.tile(for: nib, color: color)
+    func fill() {
+      guard let tile else { context.fillPath(); return }
+      context.saveGState()
+      context.clip()
+      context.interpolationQuality = .high
+      let side = WriterGrain.period
+      context.draw(tile, in: CGRect(x: 0, y: 0, width: side, height: side), byTiling: true)
+      context.restoreGState()
+    }
     if hasCore {
       context.saveGState()
       context.setAlpha(inkLayerOpacity(nib).body * flow)
       add(false)
-      context.fillPath()
+      fill()
       context.restoreGState()
       context.setAlpha(inkLayerOpacity(nib).detail * flow)
-      if nib?.tip == "Pencil" { PaperTooth.use(color, in: context) }
+      if nib?.tip == "Pencil", tile == nil { PaperTooth.use(color, in: context) }
     }
     add(hasCore)
-    context.fillPath()
+    fill()
   }
 
   func paint(color: InkColor, flow: CGFloat = 1, context: CGContext) {
@@ -219,7 +229,7 @@ final class PaperRenderer {
       let coverage = min(1, max(0, (2 * point.radius / width - 0.74) / 0.36))
       return InkPoint(position: point.position, radius: point.radius * (0.16 + 0.84 * coverage))
     }
-    return InkFootprint(body: body, core: outline(core))
+    return InkFootprint(body: body, core: outline(core), nib: nib)
   }
 
   // One pressure-varying outline per stroke. A reversal starts a new round-capped span.

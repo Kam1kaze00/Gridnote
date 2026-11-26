@@ -256,10 +256,33 @@ function taperEnd(points, width, fromStart) {
 }
 const fmt = (x) => String(Math.round(x * 1000) / 1000);
 const pair = (p) => p.map(fmt).join(" ");
-const outlines = new WeakMap();
+const outlines = new WeakMap(), inkedEdges = new WeakMap();
+function footprintSamples(o) {
+  const points = o.content.ink._0, nib = o.inkNib;
+  if (points.length < 2 || nib?.tip !== "Brush" || !nib.textured || nib.finish !== "Inked" || !(nib.width > 0)) return points;
+  if (inkedEdges.has(o)) return inkedEdges.get(o);
+  const result = [points[0]], seed = nib.seed ?? 71;
+  let travel = 0;
+  for (let i=1; i<points.length; i++) {
+    const a=points[i-1], b=points[i], [dx,dy]=sub(b.position,a.position);
+    const length=Math.hypot(dx,dy), steps=clamp(Math.ceil(length/0.60),1,256);
+    for (let j=1; j<=steps; j++) {
+      const t=j/steps, motion=brushContactBetween(a,b,t);
+      const phase=(motion.travel ?? ((travel+t*length)/nib.width))*2.5;
+      const radius=a.radius+(b.radius-a.radius)*t, depth=clamp(radius*0.14-0.045,0,0.33);
+      const left=depth*brushNoise(phase/0.76,3,seed), right=depth*brushNoise(phase/0.92,7,seed);
+      const offset=length ? (left-right)/(2*length) : 0;
+      result.push({position:[a.position[0]+dx*t-dy*offset,a.position[1]+dy*t+dx*offset],
+        radius:radius-(left+right)/2, ...motion});
+    }
+    travel += length;
+  }
+  inkedEdges.set(o,result);
+  return result;
+}
 export function inkPath(o) {
   if (outlines.has(o)) return outlines.get(o);
-  const path = outlinePoints(o.content.ink._0, o.inkNib?.tip === "Fountain");
+  const path = outlinePoints(footprintSamples(o), o.inkNib?.tip === "Fountain");
   outlines.set(o, path);
   return path;
 }
@@ -273,7 +296,7 @@ export function ballpointCorePath(o) {
 }
 const nibAngle = Math.PI / 6, nibCos = Math.cos(nibAngle), nibSin = Math.sin(nibAngle);
 export function materialCorePath(o) {
-  const nib = o.inkNib, pts = o.content.ink._0;
+  const nib = o.inkNib, pts = footprintSamples(o);
   if (!nib || !Number.isFinite(nib.width) || nib.width <= 0) return ballpointCorePath(o);
   if (nib.tip === "Fountain")
     return outlinePoints(pts.map(p => ({
@@ -284,6 +307,7 @@ export function materialCorePath(o) {
     const coverage = clamp((2*p.radius/nib.width - 0.32)/1.35, 0, 1);
     return {position:p.position, radius:p.radius * (0.36 + 0.64*coverage)};
   }));
+  if (nib.tip === "Pen") return ballpointCorePath(o);
   if (nib.tip !== "Brush") return null;
   if (nib.finish === "Inked" || nib.finish === "Dry") return brushCore(pts, nib);
   const normals = pts.map((p, i) => {

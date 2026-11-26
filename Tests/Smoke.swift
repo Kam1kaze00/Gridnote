@@ -147,6 +147,25 @@ import WebKit
     func finishControl() -> NSSegmentedControl? {
       visibleViews(NSSegmentedControl.self, in: panel).first { $0.accessibilityLabel() == "Brush finish" }
     }
+    let renderer = PaperRenderer()
+    for tip in WritingTip.allCases {
+      let finishes: [BrushFinish] = tip == .brush ? [.inked,.dry] : [.inked]
+      for finish in finishes {
+        let style = WritingStyle(tip: tip, width: 2.5, usesPressure: true, exponent: 1, finish: finish)
+        let points = [InkPoint(position: CGPoint(x: 1,y: 2), radius: 3), InkPoint(position: CGPoint(x: 40,y: 2), radius: 3)]
+        let path = renderer.footprint(points, ballpointWidth: tip == .pen ? style.width : nil, nib: style.inkNib)
+        let ctx = CGContext(data: nil, width: 200, height: 20, bitsPerComponent: 8, bytesPerRow: 200,
+          space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        ctx.setFillColor(gray: 1, alpha: 1)
+        ctx.fill(CGRect(x: 0,y: 0,width: 200,height: 20))
+        ctx.scaleBy(x: 5,y: 5)
+        path.paint(color: InkColor(r: 0,g: 0,b: 0), context: ctx)
+        ctx.flush()
+        let data = ctx.data!.assumingMemoryBound(to: UInt8.self)
+        let center = (20..<180).map { Int(data[200*10+$0]) }.sorted()
+        expect(center[156]-center[3] > 10, tip.rawValue+" shows paper grain inside the stroke")
+      }
+    }
     var spans: [CGFloat] = []
     for tip in WritingTip.allCases {
       pick(tip)

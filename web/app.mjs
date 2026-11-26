@@ -73,6 +73,7 @@ import {
   deviceHelp,
 } from "./devices.mjs";
 import {
+  grainReady,
   inkFootprint,
   paintFootprint,
   paintPaper,
@@ -623,8 +624,8 @@ function backgroundReady() {
   draw();
 }
 function inkNib(prefs, seed = 71) {
-  if (prefs.nib === "Brush") return {tip: "Brush", width: prefs.width, finish: prefs.brushFinish, seed};
-  return ["Gel","Fountain","Pencil"].includes(prefs.nib) ? {tip:prefs.nib, width:prefs.width} : undefined;
+  const nib = {tip:prefs.nib, width:prefs.width, textured:true};
+  return prefs.nib === "Brush" ? {...nib, finish:prefs.brushFinish, seed} : nib;
 }
 function paintLiveInk(g) {
   // Freeze completed portions of the preview. The full-resolution stroke is
@@ -646,7 +647,7 @@ function paintLiveInk(g) {
     add(g.prefix, section(g.previewStart, end + 1));
     g.previewStart = end;
   }
-  const outline = {tip:g.inkNib?.tip, finish:g.inkNib?.finish, body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
+  const outline = {nib:g.inkNib, body: new Path2D(g.prefix.body), core: g.prefix.core && new Path2D(g.prefix.core)};
   add(outline, section(g.previewStart, g.raw.length));
   ctx.save();
   if (g.marker) {
@@ -2508,6 +2509,7 @@ function toolOptions(anchor, id) {
         paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink], s.nib === "Pen" ? s.penFlow : 1);
         ctx.restore();
       }
+      grainReady.then(() => { if (sample.isConnected) showSample(); });
       redrawSample = showSample;
       showSample();
       pop.oninput = () => queueMicrotask(showSample);
@@ -3300,6 +3302,7 @@ $("pdfnext").onclick = () => {
     run(updatePreview);
   }
 };
+grainReady.then(backgroundReady);
 const launcher = GridnoteLauncher.mount($("welcome"), {
   device: mobileSurface ? "" : deviceLabel(),
   start: action => run(() => enterFromLauncher(action)),

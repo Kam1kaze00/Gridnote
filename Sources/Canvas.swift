@@ -23,8 +23,11 @@ struct WritingStyle {
   var finish: BrushFinish = .inked
   var seed: Int? = nil
 
+  var isWriter = true
   var inkNib: InkNib? {
-    [.brush, .gel, .fountain, .pencil].contains(tip) ? InkNib(tip: tip.rawValue, width: width, finish: tip == .brush ? finish : nil, seed: tip == .brush ? seed : nil) : nil
+    guard isWriter else { return nil }
+    return InkNib(tip: tip.rawValue, width: width, finish: tip == .brush ? finish : nil,
+      seed: tip == .brush ? seed : nil, textured: true)
   }
   func radius(at force: Double?) -> CGFloat {
     guard usesPressure, tip != .fineliner, let force, force.isFinite else { return width / 2 }
@@ -859,7 +862,7 @@ final class NoteCanvas: NSView, NSTextViewDelegate {
       strokeStyle =
         tool == .marker
         ? WritingStyle(
-          tip: .fineliner, width: preferences.markerWidth, usesPressure: false, exponent: 1)
+          tip: .fineliner, width: preferences.markerWidth, usesPressure: false, exponent: 1, isWriter: false)
         : preferences.writingStyle
       if strokeStyle.tip == .brush { strokeStyle.seed = Int(draftID.uuid.0) }
       ballpointWidth = strokeStyle.tip == .pen ? strokeStyle.width : nil
