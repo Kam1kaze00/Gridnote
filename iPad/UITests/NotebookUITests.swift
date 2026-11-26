@@ -28,7 +28,7 @@ final class NotebookUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
         share.tap()
-        let save = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Save to Files")).firstMatch
+        let save = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 25), app.debugDescription)
         app.terminate()
         app.launch()
