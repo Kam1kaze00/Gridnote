@@ -196,6 +196,7 @@ const run = async (fn) => {
     notify(e?.message || String(e));
   }
 };
+const bundledIPad = navigator.userAgent.includes("Gridnote-iPad/");
 function download(blob, name) {
   const url = URL.createObjectURL(blob),
     a = document.createElement("a");
@@ -2753,6 +2754,11 @@ async function fileMenu() {
   openPop($("files"), "files", "Notebook", () => {
     menuAction("New notebook", newBook);
     menuAction("Open notebook or PDF…", () => $("file").click());
+    if (bundledIPad) menuAction("Open sample exercise", async () => {
+      const response = await fetch("./series-circuit.gridnote");
+      if (!response.ok) throw new Error("The sample exercise could not be opened.");
+      await importBook(new File([await response.blob()], "Series circuit.gridnote"));
+    });
     menuAction("Notebook launcher…", showStartScreen);
     menuAction("Help & About", () =>
       window.open(
@@ -3002,6 +3008,7 @@ function shareFile() {
   );
 }
 function canSharePDF() {
+  if (bundledIPad) return true;
   try {
     return (
       typeof navigator.share === "function" &&
@@ -3013,7 +3020,8 @@ function canSharePDF() {
 }
 $("pdfshare").onclick = async () => {
   try {
-    if (canSharePDF()) await navigator.share({ files: [shareFile()] });
+    if (bundledIPad) savePDF();
+    else if (canSharePDF()) await navigator.share({ files: [shareFile()] });
     else savePDF();
   } catch (e) {
     if (e.name !== "AbortError")
@@ -3356,6 +3364,10 @@ function offlineStatus(message) {
 }
 
 async function prepareOffline() {
+  if (bundledIPad) {
+    offlineStatus("Ready offline");
+    return;
+  }
   if (!("serviceWorker" in navigator)) {
     offlineStatus("Offline setup is unavailable in this browser.");
     return;

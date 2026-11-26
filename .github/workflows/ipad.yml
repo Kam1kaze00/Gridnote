@@ -1,0 +1,58 @@
+name: Verify iPad app
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'feature/ipad-app-store']
+    paths: ['iPad/**', 'web/**', 'scripts/prepare_web.py', '.github/workflows/ipad.yml', 'docs/examples/Series circuit.gridnote']
+  pull_request:
+    branches: [main]
+    paths: ['iPad/**', 'web/**', 'scripts/prepare_web.py', '.github/workflows/ipad.yml', 'docs/examples/Series circuit.gridnote']
+permissions:
+  contents: read
+concurrency:
+  group: ipad-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  ipad:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare bundled editor and Xcode project
+        run: |
+          command -v xcodegen || brew install xcodegen
+          iPad/prepare.sh
+          xcodebuild -version
+      - name: Archive for iPad without distribution credentials
+        run: |
+          xcodebuild -quiet -project iPad/Gridnote.xcodeproj -scheme Gridnote -destination 'generic/platform=iOS' -archivePath build/Gridnote-iPad.xcarchive CODE_SIGNING_ALLOWED=NO archive
+          test -f build/Gridnote-iPad.xcarchive/Products/Applications/Gridnote.app/public/index.html
+      - name: Choose and boot a 13-inch iPad
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; runtimes=sorted((r for r in devices if ".iOS-" in r),key=lambda r:tuple(map(int,r.split(".iOS-")[1].split("-"))),reverse=True); print(next(d["udid"] for r in runtimes for d in devices[r] if "iPad Pro 13-inch" in d["name"]))')
+          echo "TEST_IPAD=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl status_bar "$device" override --time '9:41' --batteryState charged --batteryLevel 100
+      - name: Test launch, offline exercise, PDF sharing and recovery
+        run: |
+          set -o pipefail
+          xcodebuild -quiet -project iPad/Gridnote.xcodeproj -scheme Gridnote -destination "id=$TEST_IPAD" -parallel-testing-enabled NO -resultBundlePath build/iPadTests.xcresult test
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [[ -d build/iPadTests.xcresult ]]; then
+            xcrun xcresulttool export attachments --path build/iPadTests.xcresult --output-path build/iPad-screenshots
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ipad-screenshots-and-test-results
+          path: |
+            build/iPad-screenshots
+            build/iPadTests.xcresult
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipad-archive
+          path: build/Gridnote-iPad.xcarchive
