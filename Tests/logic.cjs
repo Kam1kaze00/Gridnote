@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const { chromium, firefox, webkit } = require("playwright");
 
 async function editHistory(page) {
@@ -46,6 +47,43 @@ async function inheritedPaper(page) {
   await choose("Ruled");
   await page.keyboard.press("Escape");
   assert.match(await page.locator("#paper").textContent(), /Ruled/, "a reset page follows later notebook defaults");
+}
+
+async function editDuringPDFOpen(page) {
+  const pick = async name => {
+    await page.click("#files");
+    await page.locator("#popover").getByRole("button", { name, exact: true }).click();
+  };
+  await page.setInputFiles("#file", path.join(__dirname, "fixtures/exercise.pdf"));
+  await page.waitForFunction(async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "exercise");
+  await pick("New notebook");
+  await page.waitForFunction(async () => (await (await import("./store.mjs")).lastNotebookInfo())?.title === "Untitled Notebook");
+  const outgoing = await page.evaluate(async () => {
+    // Hold one PDF-worker reply long enough to type in the notebook still on screen.
+    const send = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function(message, ...args) {
+      if (message?.action === "GetDocRequest" && !window.finishPDFOpen) {
+        window.finishPDFOpen = () => send.call(this, message, ...args);
+        return;
+      }
+      return send.call(this, message, ...args);
+    };
+    return (await import("./store.mjs")).loadState("last");
+  });
+  await pick("exercise");
+  await page.waitForFunction(() => typeof window.finishPDFOpen === "function");
+  await page.keyboard.press("r");
+  const sheet = await page.locator("#sheet").boundingBox();
+  await page.mouse.click(sheet.x + 120, sheet.y + 90);
+  await page.locator("#editor").evaluate(input => {
+    input.value = "Late observation";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    window.finishPDFOpen();
+  });
+  await page.waitForFunction(() => document.querySelector("#name").textContent === "exercise");
+  assert(await page.locator("#editor").isHidden());
+  const record = await page.evaluate(async id => (await import("./store.mjs")).loadRecord(id), outgoing);
+  assert(record.book.objects.some(o => o.content.text?._0 === "Late observation"));
 }
 
 async function backupRecovery(page) {
@@ -111,7 +149,7 @@ async function backupRecovery(page) {
     engine === "chromium" && process.env.BROWSER_BIN ? { executablePath: process.env.BROWSER_BIN } : {});
   try {
     const failures = [];
-    for (const check of [editHistory, lastPage, inheritedPaper, backupRecovery]) {
+    for (const check of [editHistory, lastPage, inheritedPaper, backupRecovery, editDuringPDFOpen]) {
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
       try {
         await page.goto(process.env.GRIDNOTE_URL);

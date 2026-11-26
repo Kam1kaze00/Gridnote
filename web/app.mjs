@@ -394,23 +394,35 @@ function stepHistory(direction) {
   resize();
   refresh();
 }
-async function openBook(next, name, state = null, stored = null, recovered = false) {
-  if (book) {
-    finishText();
-    finishGesture();
-    recordView(true);
-    await flush();
+// File reads, recovery and the first save belong to the same switch. A second
+// request waits for the first, including when the first file fails to open.
+let notebookQueue = Promise.resolve();
+function serializeNotebookSwitch(action) {
+  return (...args) => {
+    const change = notebookQueue.then(() => action(...args));
+    notebookQueue = change.catch(() => {});
+    return change;
+  };
+}
+async function openBook(next, name, { state, storedRevision = null, recovered = false, pdf } = {}) {
+  const nextPDF = pdf ?? (next.sourcePDF ? await readPDF(from64(next.sourcePDF)) : null);
+  try {
+    if (book) {
+      // Keep the old notebook editable while the new file loads. Commit through
+      // the last edit made before the handoff, including edits during a save.
+      do {
+        finishText();
+        finishGesture();
+        recordView(true);
+        await flush();
+      } while (dirty || editing || gesture);
+    }
+  } catch (error) {
+    if (nextPDF) await nextPDF.destroy();
+    throw error;
   }
   restoring = true;
-  // Load the incoming PDF before replacing the currently open notebook.
-  let nextPDF;
-  try {
-    nextPDF = next.sourcePDF ? await readPDF(from64(next.sourcePDF)) : null;
-  } catch (e) {
-    restoring = false;
-    throw e;
-  }
-  if (source) await source.destroy();
+  const previousPDF = source;
   clearStudyHighlights();
   $("solve").disabled = false;
   $("solve").textContent = "Solve";
@@ -422,7 +434,7 @@ async function openBook(next, name, state = null, stored = null, recovered = fal
   resetImageCache();
   book = next;
   title = name;
-  lastRevision = stored;
+  lastRevision = storedRevision;
   repairPending = recovered;
   dirty = false;
   error = "";
@@ -462,8 +474,9 @@ async function openBook(next, name, state = null, stored = null, recovered = fal
   refresh();
   draw();
   recordView(true);
+  if (previousPDF) run(() => previousPDF.destroy());
 }
-async function openStored(id) {
+const openStored = serializeNotebookSwitch(async (id) => {
   const loaded = await loadRecord(id);
   if (!loaded) throw Error("The notebook is unavailable.");
   let state;
@@ -471,19 +484,19 @@ async function openStored(id) {
     state = JSON.parse(localStorage.getItem("gridnote-view-" + id));
   } catch {}
   state ??= await loadState("view-" + id);
-  await openBook(loaded.book, loaded.title, state, loaded.storedRevision, loaded.recovered);
+  await openBook(loaded.book, loaded.title, { state, storedRevision: loaded.storedRevision, recovered: loaded.recovered });
   await saveState("last", id);
   if (loaded.recovered) {
     touchSave();
     notify("Restored a recent recovery copy.");
   }
-}
-async function newBook() {
+});
+const newBook = serializeNotebookSwitch(async () => {
   const notebook = blank();
   await openBook(notebook, "Untitled Notebook");
   touchSave();
   await flush();
-}
+});
 const pagesPanel = $("pages-panel");
 function jumpPage(p) {
   resize();
@@ -2664,7 +2677,7 @@ function menuAction(label, action, enabled = true) {
   pop.append(item);
 }
 let lastNotebookID, pausedView;
-async function showStartScreen() {
+const showStartScreen = serializeNotebookSwitch(async () => {
   finishText();
   finishGesture();
   recordView(true);
@@ -2675,7 +2688,7 @@ async function showStartScreen() {
   launcher.recent(title, true);
   $("welcome").hidden = false;
   document.body.classList.add("launching");
-}
+});
 let enteringNotebook = false;
 async function enterFromLauncher(action) {
   if (enteringNotebook) return;
@@ -2896,25 +2909,21 @@ function selectionMenu() {
     menuAction("Delete selection", () => deleteSelection());
   });
 }
-async function importBook(file) {
+const importBook = serializeNotebookSwitch(async (file) => {
   const name = file.name.replace(/\.(pdf|gridnote)$/i, "");
   if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
-    const bytes = new Uint8Array(await file.arrayBuffer()),
-      data = bytes64(bytes),
-      doc = await readPDF(bytes);
-    const next = { ...blank(), sourcePDF: data, sourcePages: doc.numPages };
-    await doc.destroy();
-    await openBook(next, name);
-    touchSave();
-    await flush();
+    const bytes = new Uint8Array(await file.arrayBuffer()), data = bytes64(bytes);
+    const pdf = await readPDF(bytes);
+    const next = { ...blank(), sourcePDF: data, sourcePages: pdf.numPages };
+    await openBook(next, name, { pdf });
   } else {
     const next = validate(JSON.parse(await file.text()));
     // Import as an independent local copy. Existing notebooks remain available in Recent.
     await openBook({ ...next, id: uid(), revision: 0 }, name);
-    touchSave();
-    await flush();
   }
-}
+  touchSave();
+  await flush();
+});
 let busyPDF = false;
 async function pdfAction(preview) {
   if (busyPDF) return;
