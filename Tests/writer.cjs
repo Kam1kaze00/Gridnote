@@ -132,6 +132,9 @@ const engines = require("playwright");
     await slider("Width", 4);
     const moving = await draw([0.9, 0.9], 1);
     assert(moving.at(-1) < moving[0] * 0.5, "moving brush lift tapers");
+    const sameLift = await draw([0.7, 0.7, 0.7, 0.7]);
+    assert(sameLift[0] < Math.max(...sameLift) * 0.4 && sameLift.at(-1) < Math.max(...sameLift) * 0.16,
+      "a normal pointerup at the last sampled position finishes a pointed brush stroke");
     const dot = await draw([0.9]);
     assert(dot.length === 1 && dot[0] > 3, "a stationary brush dot retains its weight");
     await options();
@@ -150,6 +153,38 @@ const engines = require("playwright");
       Number(await panel.getByLabel("Width", { exact: true }).inputValue()),
       3,
     );
+    await slider("Width", 1);
+    await slider("Ink flow", 0.25);
+    assert((await draw([0.5, 0.5])).every(r => r === 0.5));
+    await options();
+    await slider("Width", 4);
+    await slider("Ink flow", 1);
+    assert((await draw([0.5, 0.5])).every(r => r === 2));
+    const renderedFlow = await page.evaluate(async () => {
+      const {loadState, loadRecord} = await import("./store.mjs");
+      const {paintObject} = await import("./render.mjs");
+      const {book} = await loadRecord(await loadState("last"));
+      const [light, dark] = book.objects.slice(-2);
+      function coverage(stroke) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 180; canvas.height = 80;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(8, 8);
+        const [x, y] = stroke.content.ink._0[0].position;
+        ctx.translate(3-x, 4-y);
+        paintObject(ctx, stroke);
+        const bytes = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let sum = 0;
+        for (let i=3; i<bytes.length; i+=4) sum += bytes[i];
+        return sum;
+      }
+      return [light.opacity, dark.opacity ?? 1, coverage(light), coverage({...light,opacity:1})];
+    });
+    assert.deepEqual(renderedFlow.slice(0,2), [0.25,1]);
+    assert(renderedFlow[2] > 0 && renderedFlow[3] > 2*renderedFlow[2],
+      "Pen flow visibly changes the finished stroke even when pressure is off");
+    await options();
+    await slider("Ink flow", 0.55);
     await page.reload();
     await page.click("#continue");
     await options();
@@ -159,6 +194,7 @@ const engines = require("playwright");
         .getAttribute("aria-pressed"),
       "true",
     );
+    assert.equal(Number(await panel.getByLabel("Ink flow", {exact:true}).inputValue()), 0.55);
     await tip("Brush");
     assert.equal(
       Number(await panel.getByLabel("Width", { exact: true }).inputValue()),
@@ -169,6 +205,17 @@ const engines = require("playwright");
       Number(await panel.getByLabel("Width", { exact: true }).inputValue()),
       2,
     );
+    const detail = await page.evaluate(async () => {
+      const {sampledRadius} = await import("./devices.mjs");
+      const {fittedInk} = await import("./engine.mjs");
+      const p = {nib:"Brush",width:2,pressure:1,smoothing:0.8,usePressure:true};
+      const sample = tilt => sampledRadius(p,0.6,null,3,0.01,false,true,tilt);
+      const raw = [[0,0],[3,0.14],[6,0]].map(position => ({position,radius:0.5}));
+      const fitted = nib => fittedInk(raw,{...p,nib},[0,0.004,0.008]);
+      const midY = points => points[Math.floor(points.length/2)].position[1];
+      return [sample(0.8)/sample(0), midY(fitted("Fineliner")), midY(fitted("Pen"))];
+    });
+    assert(detail[0] > 1.25 && detail[1] < detail[2], "brush tilt and fineliner micro-stabilization");
     assert.deepEqual(errors, []);
     console.log(
       "PASS",

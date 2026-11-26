@@ -109,6 +109,7 @@ const deviceTuning = new Set(["pressure", "smoothing", "scroll"]);
 export const defaultSettings = {
   nib: "Brush",
   usePressure: true,
+  penFlow: 1,
   width: 2,
   smoothing: 0.48,
   pressure: 1,
@@ -142,10 +143,10 @@ export function pressureResponse(p, force) {
   if (!p.usePressure || p.nib === "Fineliner" || !Number.isFinite(force)) return 1;
   const level = Math.pow(Math.max(0, Math.min(1, force)), p.pressure);
   return p.nib === "Pen"
-    ? 0.74 + 0.36 * (1 - Math.pow(1 - level, 1.4))
-    : 0.12 + 2.48 * level * level * (3 - 2 * level);
+    ? 0.74 + 0.36 * level * (0.72 + 0.28 * level)
+    : 0.08 + 3.05 * level / (0.70 + 0.30 * level);
 }
-export function sampledRadius(p, force, previous, distance, elapsed, lift, stylus) {
+export function sampledRadius(p, force, previous, distance, elapsed, lift, stylus, crossTilt = 0) {
   if (!p.usePressure || p.nib === "Fineliner") return p.width / 2;
   if (lift && previous != null) {
     if (p.nib !== "Brush" || distance < 0.12) return previous;
@@ -155,17 +156,25 @@ export function sampledRadius(p, force, previous, distance, elapsed, lift, stylu
   const dt = Math.max(0.001, elapsed);
   if (force == null && p.nib === "Brush" && !stylus)
     force = previous == null ? 0.42 : 0.22 + 0.54 / (1 + distance / (dt * 230));
+  if (p.nib === "Pen") {
+    const load = force ?? (stylus ? null : 0.62);
+    if (load != null) {
+      const dwell = previous == null ? 0 : 0.13 * (1 / (1 + distance / (dt * 180)) - 0.40);
+      force = Math.max(0, Math.min(1, load + dwell));
+    }
+  }
   if (force == null) return previous ?? p.width / 2;
-  const target = p.width * pressureResponse(p, force) / 2;
+  const spread = p.nib === "Brush" ? 1 + 0.65 * Math.min(1, Math.abs(crossTilt)) * force : 1;
+  const target = p.width * pressureResponse(p, force) * spread / 2;
   if (previous == null) return target;
-  const response = p.nib === "Brush" && target > previous ? 0.011 : 0.0035;
+  const response = p.nib === "Brush" && target > previous ? 0.008 : 0.0035;
   return target + (previous - target) * Math.exp(-dt / response);
 }
 export function restore(tool) {
   if (!tool) prefs = {};
   else {
     const keys = {
-      brush: ["nib", "usePressure", "width", "smoothing", "pressure", "ink"],
+      brush: ["nib", "usePressure", "penFlow", "width", "smoothing", "pressure", "ink"],
       selector: ["select", "guides", "mask"],
       eraser: ["erase", "diameter"],
       text: ["textSize", "textInk", "alignment", "textTraits", "code"],

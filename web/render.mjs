@@ -141,14 +141,16 @@ export function inkFootprint(o) {
   const core = ballpointCorePath(o);
   return {body: new Path2D(inkPath(o)), core: core ? new Path2D(core) : null};
 }
-export function paintFootprint(ctx, paths, color) {
+export function paintFootprint(ctx, paths, color, flow = 1) {
   ctx.fillStyle = rgb(color);
   if (paths.core) {
     ctx.save();
-    ctx.globalAlpha *= 0.43;
+    const original = ctx.globalAlpha;
+    ctx.globalAlpha = original * flow * 0.43;
     ctx.fill(paths.body);
-    ctx.restore();
+    ctx.globalAlpha = original * flow;
     ctx.fill(paths.core);
+    ctx.restore();
   } else ctx.fill(paths.body);
 }
 export function paintObject(ctx, o, onReady) {
@@ -168,7 +170,7 @@ export function paintObject(ctx, o, onReady) {
       ctx.globalCompositeOperation = "multiply";
       ctx.globalAlpha = o.opacity ?? 0.38;
     }
-    paintFootprint(ctx, p, o.content.ink._1);
+    paintFootprint(ctx, p, o.content.ink._1, o.opacity ?? 1);
     ctx.restore();
     return;
   }
@@ -307,12 +309,12 @@ export async function makePDF(book, source, progress) {
           x: 0,
           y: H + top,
           color: lib.rgb(c.r, c.g, c.b),
-          opacity: core ? 0.43 : (o.opacity ?? 1),
+          opacity: (core ? 0.43 : 1) * (o.opacity ?? 1),
           blendMode:
             o.instrument === "marker" ? lib.BlendMode.Multiply : undefined,
         };
         page.drawSvgPath(inkPath(o), options);
-        if (core) page.drawSvgPath(core, {...options, opacity: 1});
+        if (core) page.drawSvgPath(core, {...options, opacity: o.opacity ?? 1});
       } else if (kind(o) === "image") {
         let img = pngs.get(o.id);
         if (!img) {

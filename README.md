@@ -21,11 +21,13 @@ The launcher offers **Continue notebook**, **New notebook** and **Open file**. T
 
 ## Work on a page
 
-- **Write.** Press **Q** for Writer. Use Pen for pressure-sensitive ballpoint shading, Brush for tapered strokes, or Fineliner for an even line. Tap Writer again to adjust the tip and width.
+- **Write.** Press **Q** for Writer. Use Pen for pressure-sensitive ballpoint shading, Brush for tapered strokes, or Fineliner for an even line. Tap Writer to change tips or set the width for each one. Under Pen, adjust **Ink flow** to make new writing lighter or darker.
 - **Edit.** Press **W** to select, **E** to erase or **R** to type. Select a stroke, image, text block or table to move or resize it. Undo and redo work on edits and page operations.
 - **Add the exercise.** Paste a screenshot, import an image or open a PDF. On a tablet or phone, you can photograph and crop an exercise directly into the current page.
 - **Work it out.** Add a highlighter mark, table, code block or shape. Drag **Shapes → X–Y axes** to lay out a graph. Use **Solve** to review a supported equation or code snippet. You can correct what the app reads before using the result.
 - **Organize and share.** Choose grid, ruled, dotted or plain paper. Open **Pages** to add or move sheets. **Clear Writing** removes Writer strokes on the current page. **Preview PDF**, **Export PDF** and the system share sheet use the same A4 page breaks.
+
+![The same pressure sweep and handwritten equation drawn with Pen, Brush and Fineliner](docs/images/writer-tips.png)
 
 On a two-button Wacom pen, tap the upper switch, erase, then lift to return to Writer. Hold the lower switch and move vertically to scroll.
 

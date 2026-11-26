@@ -185,6 +185,20 @@ import WebKit
                                lift: true, stylus: true) < 1 &&
            brush.sampledRadius(force: nil, previous: 3, distance: 0, elapsed: 0.01,
                                lift: true, stylus: true) == 3, "a moving lift tapers and a brush dot survives")
+    let firmLine = [InkPoint(position: .zero, radius: 3), InkPoint(position: CGPoint(x: 45, y: 0), radius: 3)]
+    let tapered = brush.fittedInk(firmLine, smoothing: 0, lifted: true)
+    expect(tapered.first!.position == .zero && tapered.last!.position == firmLine.last!.position &&
+      tapered.first!.radius < 1 && tapered.last!.radius < 0.4 && tapered.map(\.radius).max() == 3,
+      "a brush has a pointed entry and release even when tip-up repeats the last position")
+    let upright = brush.sampledRadius(force: 0.6, previous: nil, distance: 3, elapsed: 0.01, lift: false, stylus: true)
+    let tilted = brush.sampledRadius(force: 0.6, previous: nil, distance: 3, elapsed: 0.01, lift: false, stylus: true, crossTilt: 0.8)
+    expect(tilted > 1.25 * upright, "tilting the brush across its motion broadens a loaded stroke")
+    let line = WritingStyle(tip: .fineliner, width: 1, usesPressure: true, exponent: 1)
+    let jitter = [CGPoint(x: 0,y: 0), CGPoint(x: 3,y: 0.14), CGPoint(x: 6,y: 0)].map { InkPoint(position: $0,radius: 0.5) }
+    let ordinary = smoothedInk(jitter, amount: 0.8, times: [0,0.004,0.008])
+    let ruled = line.fittedInk(jitter, smoothing: 0.8, times: [0,0.004,0.008])
+    expect(ruled[ruled.count/2].position.y < ordinary[ordinary.count/2].position.y &&
+      ruled.allSatisfy { $0.radius == 0.5 }, "fineliner damps sub-nib wobble while keeping its specified line width")
     set(response, 0.5)
     let soft = draw([0.3])[0]
     set(response, 2)
@@ -195,6 +209,36 @@ import WebKit
       "pressure off honors the exact chosen width")
     pick(.pen)
     expect(width.doubleValue == 3, "returning to Pen restores its width in the slider")
+    let flow = visibleViews(NSSlider.self, in: panel).first { $0.accessibilityLabel() == "Ink flow" }!
+    set(width, 1)
+    set(flow, 0.25)
+    let thin = draw([0.5, 0.5, 0.5])
+    let light = canvas.notebook.objects.last!
+    set(width, 4)
+    set(flow, 1)
+    let thick = draw([0.5, 0.5, 0.5])
+    let dark = canvas.notebook.objects.last!
+    expect(thin[0] == 0.5 && thick[0] == 2 && light.opacity == 0.25 && dark.opacity == nil,
+           "Pen width and flow from the Writer popup reach the very next tablet stroke")
+    func darkness(_ stroke: NoteObject) -> Int {
+      let side = 96
+      let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8,
+        bytesPerRow: side, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+      ctx.setFillColor(gray: 1, alpha: 1)
+      ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+      ctx.scaleBy(x: 8, y: 8)
+      ctx.translateBy(x: -36, y: -74)
+      PaperRenderer().draw(stroke, context: ctx)
+      ctx.flush()
+      let pixels = ctx.data!.assumingMemoryBound(to: UInt8.self)
+      return (0..<side*side).reduce(0) { $0 + 255 - Int(pixels[$1]) }
+    }
+    var sameWidth = light
+    sameWidth.opacity = nil
+    expect(darkness(light) > 0 && darkness(sameWidth) > 2 * darkness(light),
+           "lower ink flow visibly lightens the rendered ballpoint at the same width")
+    expect(canvas.notebook.objects.suffix(2).first?.opacity == 0.25,
+           "changing Pen controls leaves the previous stroke as drawn")
     pick(.brush)
     expect(width.doubleValue == 4, "returning to Brush restores its own width")
     popover.close()

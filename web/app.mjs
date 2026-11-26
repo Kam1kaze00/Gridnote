@@ -39,7 +39,7 @@ import {
   contains,
   overlaps,
   makeInk,
-  smooth,
+  fittedInk,
   touchesInk,
   hit,
   regionHit,
@@ -627,7 +627,7 @@ function paintLiveInk(g) {
   function section(start, end) {
     const raw = g.raw.slice(start, end),
       times = g.times.slice(start, end);
-    const o = makeInk(smooth(raw, g.smoothing, times), g.color, g.id);
+    const o = makeInk(fittedInk(raw, g.prefs, times, start === 0, false, g.marker), g.color, g.id);
     o.ballpointWidth = g.ballpointWidth;
     return inkFootprint(o);
   }
@@ -647,7 +647,7 @@ function paintLiveInk(g) {
     ctx.globalAlpha = g.prefs.opacity;
     ctx.globalCompositeOperation = "multiply";
   }
-  paintFootprint(ctx, outline, g.color);
+  paintFootprint(ctx, outline, g.color, g.prefs.penFlow);
   ctx.restore();
 }
 function paint() {
@@ -885,14 +885,26 @@ function pickTool(id) {
 }
 function append(e, p, isUp = false) {
   const g = gesture, last = g.raw.at(-1), now = e.timeStamp * 0.001;
+  const distance = last ? dist(last.position, p) : 0;
+  let crossTilt = 0;
+  if (g.stylus && g.prefs.nib === "Brush" && distance > 0.01) {
+    crossTilt = ((e.tiltX || 0) * (p[1] - last.position[1]) -
+      (e.tiltY || 0) * (p[0] - last.position[0])) / (90 * distance);
+  }
   const radius = g.marker ? g.prefs.markerWidth / 2 : sampledRadius(g.prefs,
-    g.stylus && !isUp ? e.pressure : null, last?.radius, last ? dist(last.position, p) : 0,
-    now - (g.times.at(-1) ?? now), isUp, g.stylus);
+    g.stylus && !isUp ? e.pressure : null, last?.radius, distance,
+    now - (g.times.at(-1) ?? now), isUp, g.stylus, crossTilt);
   p = [
     clamp(p[0], radius, W - radius),
     clamp(p[1], radius, pages * H - radius),
   ];
-  if (last && dist(last.position, p) < 0.12) {
+  const moved = !last || dist(last.position, p) >= 0.12;
+  if (moved) g.lastMotion = now;
+  if (isUp) {
+    g.lifted = now - g.lastMotion <= 0.09;
+    liveInk = null;
+  }
+  if (last && !moved) {
     if (!isUp && Math.abs(radius - last.radius) > 0.005) {
       last.radius = g.raw.length === 1 ? Math.max(last.radius, radius) : radius;
       g.times[g.times.length - 1] = e.timeStamp * 0.001;
@@ -911,11 +923,14 @@ function append(e, p, isUp = false) {
 function currentInk() {
   if (!liveInk) {
     liveInk = makeInk(
-      smooth(gesture.raw, gesture.smoothing, gesture.times),
+      fittedInk(gesture.raw, gesture.prefs, gesture.times, true, gesture.lifted, gesture.marker),
       gesture.color,
       gesture.id,
     );
-    if (gesture.ballpointWidth) liveInk.ballpointWidth = gesture.ballpointWidth;
+    if (gesture.ballpointWidth) {
+      liveInk.ballpointWidth = gesture.ballpointWidth;
+      if (gesture.prefs.penFlow < 1) liveInk.opacity = gesture.prefs.penFlow;
+    }
     if (gesture.marker) {
       liveInk.instrument = "marker";
       liveInk.opacity = gesture.prefs.opacity;
@@ -964,7 +979,7 @@ function begin(p, e) {
     prefs = settings();
   if (mode === "brush" || mode === "marker") {
     const stylus = e.pointerType === "pen" && devices[device][1];
-    const ballpointWidth = mode === "brush" && prefs.nib === "Pen" && prefs.usePressure && stylus
+    const ballpointWidth = mode === "brush" && prefs.nib === "Pen"
       ? prefs.width : null;
     gesture = {
       type: "ink", stylus, ballpointWidth,
@@ -976,7 +991,6 @@ function begin(p, e) {
       raw: [],
       times: [],
       color: mode === "marker" ? markers[prefs.markerInk] : color(),
-      smoothing: prefs.smoothing,
       checkpoint: performance.now(),
     };
     liveInk = null;
@@ -2464,11 +2478,11 @@ function toolOptions(anchor, id) {
             last ? dist(last.position, position) : 0, 0.008 + force * 0.018, i === 100, stylus);
           points.push({position, radius});
         }
-        const sampleInk = makeInk(smooth(points, s.smoothing), inks[s.ink]);
-        if (stylus && s.usePressure && s.nib === "Pen") sampleInk.ballpointWidth = s.width;
+        const sampleInk = makeInk(fittedInk(points, s, [], true, true), inks[s.ink]);
+        if (s.nib === "Pen") sampleInk.ballpointWidth = s.width;
         ctx.save();
         ctx.scale(2, 2);
-        paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink]);
+        paintFootprint(ctx, inkFootprint(sampleInk), inks[s.ink], s.penFlow);
         ctx.restore();
       }
       redrawSample = showSample;
@@ -2478,10 +2492,9 @@ function toolOptions(anchor, id) {
         setting("nib", v);
         toolOptions(anchor, id);
       });
-      const speedBrush = !devices[device][1] && p.nib === "Brush";
-      const supported = speedBrush || (devices[device][1] && p.nib !== "Fineliner");
+      const supported = p.nib !== "Fineliner";
       const toggle = checkOption(
-        speedBrush ? "Use stroke speed" : "Use pen pressure",
+        supported && !devices[device][1] ? "Use stroke speed" : "Use pen pressure",
         supported && p.usePressure,
         (v) => {
           setting("usePressure", v);
@@ -2490,6 +2503,7 @@ function toolOptions(anchor, id) {
       );
       toggle.disabled = !supported;
       slider("Width", "width", 0.7, 6, 0.1, (x) => x.toFixed(1) + " pt");
+      if (p.nib === "Pen") slider("Ink flow", "penFlow", 0.25, 1, 0.01, (x) => Math.round(x * 100) + "%");
       slider(
         "Smoothing",
         "smoothing",
