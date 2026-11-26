@@ -3120,22 +3120,31 @@ $("pdfmodal").addEventListener("close", () => {
 async function updatePreview() {
   const token = ++previewEpoch, n = pdfIndex, doc = pdfPreview;
   if (!doc) return;
+  const shown = $("pdfcanvas"), message = $("pdfmessage");
+  shown.hidden = true;
+  message.textContent = "Rendering page " + (n + 1) + "…";
+  message.hidden = false;
+  $("pdfcount").textContent = "";
+  $("pdfprev").disabled = n === 0;
+  $("pdfnext").disabled = n === doc.numPages - 1;
   let canvas;
   try {
     canvas = await pdfBitmap(doc, n,
       Math.min(1450, (innerWidth - 30) * Math.min(2, devicePixelRatio || 1)));
   } catch (error) {
-    if (token === previewEpoch) throw error;
+    if (token === previewEpoch) {
+      message.textContent = "Preview unavailable. You can still save this PDF.";
+      throw error;
+    }
     return;
   }
   if (token !== previewEpoch) return;
-  const shown = $("pdfcanvas");
   shown.width = canvas.width;
   shown.height = canvas.height;
   shown.getContext("2d").drawImage(canvas, 0, 0);
-  $("pdfcount").textContent = n + 1 + " / " + pdfPreview.numPages;
-  $("pdfprev").disabled = n === 0;
-  $("pdfnext").disabled = n === pdfPreview.numPages - 1;
+  message.hidden = true;
+  shown.hidden = false;
+  $("pdfcount").textContent = n + 1 + " / " + doc.numPages;
 }
 document.addEventListener("keydown", (e) => {
   if (document.body.classList.contains("launching")) return;

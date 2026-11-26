@@ -338,6 +338,10 @@ select {
   height: auto;
   background: white;
 }
+.pdfpage:has(#pdfmessage:not([hidden])) {
+  display: grid;
+  place-items: center;
+}
 dialog {
   width: min(760px, 95vw);
   height: min(900px, 90dvh);

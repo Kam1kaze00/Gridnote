@@ -127,10 +127,13 @@
         ><button id="pdfshare">Share PDF</button
         ><button id="pdfsave" class="primary">Save PDF</button>
       </div>
-      <div class="pdfpage"><canvas id="pdfcanvas"></canvas></div>
+      <div class="pdfpage">
+        <span id="pdfmessage" role="status" hidden></span>
+        <canvas id="pdfcanvas" width="0" height="0" hidden></canvas>
+      </div>
       <div class="pdf-toolbar">
         <button id="pdfprev" aria-label="Previous page">‹</button
-        ><span id="pdfcount"></span
+        ><span id="pdfcount" aria-live="polite" aria-atomic="true"></span
         ><button id="pdfnext" aria-label="Next page">›</button>
       </div>
     </dialog>
