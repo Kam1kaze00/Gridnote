@@ -3,9 +3,9 @@ import XCTest
 final class NotebookUITests: XCTestCase {
     func testOfflineLectureWorkflow() throws {
         continueAfterFailure = false
-        XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launch()
+        if app.state != .runningForeground { app.launch() }
+        XCUIDevice.shared.orientation = .landscapeLeft
         let create = app.buttons["New notebook"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 45), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Ready offline"].firstMatch.exists)

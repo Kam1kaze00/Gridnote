@@ -34,10 +34,15 @@ jobs:
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           xcrun simctl status_bar "$device" override --time '9:41' --batteryState charged --batteryLevel 100
+      - name: Install and launch the simulator build
+        run: |
+          xcodebuild -quiet -project iPad/Gridnote.xcodeproj -scheme Gridnote -destination "id=$TEST_IPAD" -derivedDataPath build/iPadDerived build-for-testing
+          xcrun simctl install "$TEST_IPAD" build/iPadDerived/Build/Products/Debug-iphonesimulator/Gridnote.app
+          xcrun simctl launch "$TEST_IPAD" app.gridnote.notebook.ipad
       - name: Test launch, offline exercise, PDF sharing and recovery
         run: |
           set -o pipefail
-          xcodebuild -quiet -project iPad/Gridnote.xcodeproj -scheme Gridnote -destination "id=$TEST_IPAD" -parallel-testing-enabled NO -resultBundlePath build/iPadTests.xcresult test
+          xcodebuild -project iPad/Gridnote.xcodeproj -scheme Gridnote -destination "id=$TEST_IPAD" -derivedDataPath build/iPadDerived -parallel-testing-enabled NO -resultBundlePath build/iPadTests.xcresult test-without-building
       - name: Export simulator screenshots
         if: always()
         run: |
