@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-${{ github.head_ref || github.ref_name }}
+  group: ipad-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   ipad:
