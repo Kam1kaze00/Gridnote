@@ -139,28 +139,30 @@ export function smooth(raw, amount, times = [], technical = false) {
     return raw;
   const pts = raw.map((p) => ({ ...p, position: [...p.position] }));
   const weights = raw.map(() => 0);
+  const timed = times.length === raw.length;
+  const turns = new Float64Array(raw.length);
   for (let i = 1; i < raw.length - 1; i++) {
-    const a = raw[i - 1].position,
-      b = raw[i].position,
-      c = raw[i + 1].position;
-    const u = sub(b, a),
-      v = sub(c, b),
-      l = dist(a, b),
-      m = dist(b, c);
-    const dt = times.length === raw.length ? times[i + 1] - times[i - 1] : 0;
-    const speedWeight = dt > 0 ? 1 / (1 + (l + m) / dt / 650) : 1;
-    const turn = dot(u, v) / Math.max(0.0001, l * m);
-    const k = speedWeight * clamp((turn - 0.7) / 0.26, 0, 1) * amount;
-    weights[i] = k;
-    const t = l / Math.max(0.001, l + m),
-      dx = a[0] + (c[0] - a[0]) * t - b[0],
-      dy = a[1] + (c[1] - a[1]) * t - b[1];
-    const deviation = Math.hypot(dx, dy);
-    let f = Math.min(0.46 * k, 0.85 / Math.max(0.001, deviation));
+    const u = sub(raw[i].position, raw[i-1].position), v = sub(raw[i+1].position, raw[i].position);
+    if (Math.min(Math.hypot(...u), Math.hypot(...v)) > 0.08 &&
+        (!timed || Math.max(times[i]-times[i-1], times[i+1]-times[i]) < 0.055))
+      turns[i] = Math.atan2(cross(u,v), dot(u,v));
+  }
+  for (let i = 1; i < raw.length - 1; i++) {
+    const a = raw[i-1].position, b = raw[i].position, c = raw[i+1].position;
+    const u = sub(b,a), v = sub(c,b), l = dist(a,b), m = dist(b,c);
+    if (Math.min(l,m) <= 0.08 || (timed && Math.max(times[i]-times[i-1],times[i+1]-times[i]) >= 0.055)) continue;
+    const turn = dot(u,v)/(l*m), angle = turns[i], sign = Math.sign(angle);
+    const curve = Math.abs(angle) > 0.09 && Math.abs(angle) < 2.35 &&
+      Math.min(sign*turns[i-1], sign*turns[i+1]) > 0.055;
+    const fair = clamp((turn-0.36)/0.56, 0, 1);
+    weights[i] = amount * (curve ? 1 : fair);
+    const t = l/(l+m), dx = a[0]+(c[0]-a[0])*t-b[0], dy = a[1]+(c[1]-a[1])*t-b[1];
+    const deviation = Math.hypot(dx,dy), tolerance = clamp(raw[i].radius*0.64, 0.20, 0.72);
+    let f = amount * fair * (curve ? 0.14 : 0.67) * Math.min(1,tolerance/Math.max(0.001,deviation));
     if (technical && turn > 0.35) {
       const tolerance = Math.min(0.50, raw[i].radius * 0.85);
       const micro = Math.max(0, 1 - deviation / tolerance) * Math.min(1, (turn - 0.35) / 0.4);
-      f = Math.max(f, 0.86 * amount * micro);
+      f += (amount - f) * 0.75 * micro;
     }
     pts[i].position = [b[0] + dx * f, b[1] + dy * f];
   }
@@ -186,12 +188,12 @@ export function smooth(raw, amount, times = [], technical = false) {
           (w[j] * weights[i + 1] * len) / Math.max(0.001, Math.hypot(...w))) /
           3,
     );
-    const steps = clamp(Math.ceil(len / 1.8), 1, 1000);
+    const steps = clamp(Math.ceil(len / 1.35), 1, 1000);
     for (let j = 1; j <= steps; j++) {
       const t = j / steps,
         s = 1 - t;
       out.push({
-        position: a.map(
+        position: j === steps ? [...b] : a.map(
           (x, k) =>
             s * s * s * x +
             3 * s * s * t * c1[k] +
@@ -278,7 +280,7 @@ function footprintSamples(o) {
 }
 export function inkPath(o) {
   if (outlines.has(o)) return outlines.get(o);
-  const path = outlinePoints(footprintSamples(o), o.inkNib?.tip === "Fountain");
+  const path = outlinePoints(footprintSamples(o), o.inkNib?.tip === "Fountain", o.inkNib?.materialVersion === 2);
   outlines.set(o, path);
   return path;
 }
@@ -294,6 +296,7 @@ const nibAngle = Math.PI / 6, nibCos = Math.cos(nibAngle), nibSin = Math.sin(nib
 export function materialCorePath(o) {
   const nib = o.inkNib, pts = footprintSamples(o);
   if (!nib || !Number.isFinite(nib.width) || nib.width <= 0) return ballpointCorePath(o);
+  if (nib.materialVersion === 2 && (nib.tip === "Fountain" || (nib.tip === "Brush" && nib.finish === "Inked"))) return null;
   if (nib.tip === "Fountain")
     return outlinePoints(pts.map(p => ({
       position:[p.position[0]+0.17*p.radius*nibCos, p.position[1]+0.17*p.radius*nibSin],
@@ -381,7 +384,9 @@ function brushCore(points, nib) {
       const n=(2*k+1)/lanes-1, edge=Math.abs(n);
       const hair=brushNoise(s/8.6,(n+drift)*9,seed+5);
       const patch=brushNoise(s/7.4,n*1.6,seed+6);
-      const opening=0.085+0.22*fast+0.22*edge+0.28*depleted*fast+0.15*light
+      const opening=nib.materialVersion === 2
+        ? 0.12+0.30*fast+0.09*edge+0.12*depleted*fast-0.10*(1-edge)+0.17*(patch-0.5)
+        : 0.085+0.22*fast+0.22*edge+0.28*depleted*fast+0.15*light
         -0.20*(1-depleted)*(1-edge)+0.32*(patch-0.5);
       const coverage=1-ease((opening-hair+0.065)/0.25);
       const half=(1.06/lanes)*coverage;
@@ -396,12 +401,15 @@ function brushCore(points, nib) {
   return paths.join("");
 }
 
-function outlinePoints(samples, broad = false) {
+function outlinePoints(samples, broad = false, smoothNib = false) {
+  const degrees = smoothNib ? -42.3 : 30, aspect = smoothNib ? 0.22 : 0.30;
+  const cos = smoothNib ? Math.cos(-Math.PI * 0.235) : nibCos;
+  const sin = smoothNib ? Math.sin(-Math.PI * 0.235) : nibSin;
   const pts = broad ? samples.map(({position:[x,y],radius}) => ({
-    position:[x*nibCos + y*nibSin, (-x*nibSin + y*nibCos)/0.30], radius,
+    position:[x*cos + y*sin, (-x*sin + y*cos)/aspect], radius,
   })) : samples;
-  const vertex = broad ? ([x,y]) => pair([x*nibCos - y*0.30*nibSin, x*nibSin + y*0.30*nibCos]) : pair;
-  const arc = r => "A" + pair([r, broad ? r*0.30 : r]) + " " + (broad ? "30" : "0") + " 0 0 ";
+  const vertex = broad ? ([x,y]) => pair([x*cos - y*aspect*sin, x*sin + y*aspect*cos]) : pair;
+  const arc = r => "A" + pair([r, broad ? r*aspect : r]) + " " + (broad ? degrees : 0) + " 0 0 ";
   let path = "";
   const circle = ({position:[x,y], radius:r}) => {
     const right = vertex([x+r,y]), left = vertex([x-r,y]);

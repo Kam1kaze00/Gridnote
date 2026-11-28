@@ -87,7 +87,7 @@ final class ToolOptionsController: NSViewController {
       preview = sample
       column.addArrangedSubview(chromeLabel("Writing tip", size: 12, weight: .medium))
       let tips = WritingTip.allCases
-      let rows = [Array(tips.prefix(3)), Array(tips.suffix(3))].map { group in
+      let rows = [Array(tips.prefix(3)), Array(tips.dropFirst(3))].map { group in
         let buttons = group.map { tip in
           let button = ChromeButton(tip.rawValue, style: .choice, target: self, action: #selector(nibChanged(_:)))
           button.controlHeight = 26
@@ -489,7 +489,7 @@ private final class BrushSample: NSView {
         distance: lastPosition?.distance(to: position) ?? 0, elapsed: elapsed,
         lift: i == 100, stylus: preferences.device.pressure)
       var point = InkPoint(position: position, radius: radius)
-      if style.tip == .brush {
+      if style.recordsBristles {
         point.recordBrushMotion(after: points.last, width: style.width, elapsed: elapsed)
       }
       points.append(point)

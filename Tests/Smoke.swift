@@ -119,8 +119,8 @@ import WebKit
     let response = sliders.first { $0.accessibilityLabel() == "Pressure response" }!
     let toggle = visibleViews(NSButton.self, in: panel).first { $0.title == "Use pen pressure" }!
     expect(
-      Set(tips.map(\.caption)) == Set(["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]),
-      "Writer offers its six tips in one panel")
+      Set(tips.map(\.caption)) == Set(["Pen", "Brush", "Fineliner", "Fountain", "Pencil"]),
+      "Writer offers its five tips in one panel")
     func pick(_ tip: WritingTip) {
       let picked = tips.first { $0.caption == tip.rawValue }!
       picked.performClick(nil)
@@ -165,6 +165,18 @@ import WebKit
     func finishControl() -> NSSegmentedControl? {
       visibleViews(NSSegmentedControl.self, in: panel).first { $0.accessibilityLabel() == "Brush finish" }
     }
+    let suite = "Gridnote.WriterTest." + UUID().uuidString
+    let saved = UserDefaults(suiteName: suite)!
+    saved.set("Gel", forKey: "WritingTip")
+    let migrated = PenPreferences(defaults: saved)
+    expect(migrated.nib == .pen, "a retired Gel selection opens on Pen")
+    saved.removePersistentDomain(forName: suite)
+    let corner = [CGPoint(x: 0,y: 0),CGPoint(x: 8,y: 0),CGPoint(x: 8,y: 7)]
+      .map { InkPoint(position: $0, radius: 1) }
+    let fitted = smoothedInk(corner, amount: 1)
+    expect(fitted.contains(corner[1]) && fitted.last == corner.last &&
+      fitted.allSatisfy { abs($0.position.y) < 0.00001 || abs($0.position.x - 8) < 0.00001 },
+      "smoothing preserves the endpoints and right angle of a math symbol")
     let renderer = PaperRenderer()
     for tip in WritingTip.allCases {
       let finishes: [BrushFinish] = tip == .brush ? [.inked,.dry] : [.inked]
@@ -181,7 +193,13 @@ import WebKit
         ctx.flush()
         let data = ctx.data!.assumingMemoryBound(to: UInt8.self)
         let center = (20..<180).map { Int(data[200*10+$0]) }.sorted()
-        expect(center[156]-center[3] > 10, tip.rawValue+" shows paper grain inside the stroke")
+        let contrast = center[156] - center[3]
+        expect(style.inkNib?.materialVersion == 2, "new marks carry their material version")
+        if tip == .pencil {
+          expect((3...42).contains(contrast), "graphite has a restrained paper tooth")
+        } else if finish == .inked {
+          expect(contrast <= 2, tip.rawValue+" leaves clean ink inside a uniform stroke")
+        }
       }
     }
     var spans: [CGFloat] = []
@@ -197,7 +215,7 @@ import WebKit
       spans.append(radii.max()! - radii.min()!)
       let object = canvas.notebook.objects.last!
       expect(object.ballpointWidth == (tip == .pen ? 3 : nil), "only pressure ballpoint has layered ink")
-      if [.gel,.fountain,.brush,.pencil].contains(tip) {
+      if [.fountain,.brush,.pencil].contains(tip) {
         expect(object.inkNib?.tip == tip.rawValue && object.inkNib?.width == 3 && object.inkNib?.finish == (tip == .brush ? .inked : nil), "the selected writing material survives pen lift")
         let scaled = object.transformed(from: .zero, scale: 2, offset: .zero)
         expect(scaled.inkNib?.width == 6 && cutInk(object) { $0.position.x > 43 }.first?.inkNib == object.inkNib,

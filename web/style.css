@@ -884,8 +884,10 @@ header { border-bottom: 1px solid #30383d; gap: 6px; }
 
 .choices.writing-tips {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
+.writing-tips button { grid-column: span 2; }
+.writing-tips button:nth-child(n+4) { grid-column: span 3; }
 
 .choices.brush-finish {
   display: grid;

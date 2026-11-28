@@ -115,12 +115,14 @@ const assert = require("node:assert/strict");
         const {x, y, width, height} = button.getBoundingClientRect();
         return {x, y, width, height};
       }));
-      assert.equal(boxes.length, 6);
+      assert.equal(boxes.length, 5);
       for (const [i, box] of boxes.entries()) {
         assert(box.width >= 44 && box.height >= 44, "each tip has a full touch target");
-        assert.equal(box.x, boxes[i % 3].x);
+        if (i !== 0 && i !== 3) assert(box.x >= boxes[i-1].x + boxes[i-1].width);
+        if (i === 3) assert.equal(box.x, boxes[0].x);
         assert.equal(box.y, boxes[i < 3 ? 0 : 3].y);
       }
+      assert(Math.abs(boxes[4].x + boxes[4].width - boxes[2].x - boxes[2].width) <= 1);
       assert(boxes[3].y >= boxes[0].y + boxes[0].height);
       const p = await page.locator("#popover").boundingBox();
       assert(

@@ -1,6 +1,10 @@
 import AppKit
 
 func inkLayerOpacity(_ nib: InkNib?) -> (body: CGFloat, detail: CGFloat) {
+  if nib?.materialVersion == 2 {
+    if nib?.tip == "Pencil" { return (0.47, 0.16) }
+    if nib?.tip == "Brush" && nib?.finish == .dry { return (0.65, 0.94) }
+  }
   if nib?.tip == "Brush", let finish = nib?.finish {
     return finish == .dry ? (0.055, 0.94) : (0.59, 0.96)
   }
@@ -143,7 +147,9 @@ extension PaperRenderer {
         let hair = brushNoise(s/8.6,(n+drift)*9,seed &+ 5)
         let patch = brushNoise(s/7.4,n*1.6,seed &+ 6)
         let base = 0.085 + 0.22*fast + 0.22*edge + 0.28*depleted*fast + 0.15*light
-        let opening = base - 0.20*(1-depleted)*(1-edge) + 0.32*(patch-0.5)
+        let opening = nib.materialVersion == 2
+          ? 0.12 + 0.30*fast + 0.09*edge + 0.12*depleted*fast - 0.10*(1-edge) + 0.17*(patch-0.5)
+          : base - 0.20*(1-depleted)*(1-edge) + 0.32*(patch-0.5)
         let half = (1.06/CGFloat(lanes))*(1-brushEase((opening-hair+0.065)/0.25))
         guard half >= 0.003 else { close(k); continue }
         left[k].append(r.position + normal * (r.radius*max(-1,n-half)))
@@ -159,10 +165,13 @@ extension PaperRenderer {
     switch nib.tip {
     case "Fountain":
       // Sweep a broad, angled nib. A dot has the same elliptical footprint as a line end.
-      var basis = CGAffineTransform(rotationAngle: .pi / 6).scaledBy(x: 1, y: 0.30)
+      let smooth = nib.materialVersion == 2
+      var basis = CGAffineTransform(rotationAngle: smooth ? -.pi * 0.235 : .pi / 6)
+        .scaledBy(x: 1, y: smooth ? 0.22 : 0.30)
       let inverse = basis.inverted()
       let local = points.map { InkPoint(position: $0.position.applying(inverse), radius: $0.radius) }
       let body = outline(local).copy(using: &basis)!
+      if smooth { return InkFootprint(body: body, core: nil, nib: nib) }
       let middle = local.map { p in
         InkPoint(position: p.position + CGPoint(x: 0.17 * p.radius, y: 0),
                  radius: p.radius * min(0.84, max(0.36, 2 * p.radius / nib.width - 0.35)))
@@ -175,6 +184,9 @@ extension PaperRenderer {
       }
       return InkFootprint(body: outline(points), core: outline(grain), nib: nib)
     case "Brush":
+      if nib.materialVersion == 2 && nib.finish == .inked {
+        return InkFootprint(body: outline(points), core: nil, nib: nib)
+      }
       if let finish = nib.finish {
         let edge = finish == .inked && nib.textured == true ? inkedEdge(points, nib: nib) : points
         return InkFootprint(body: outline(edge), core: brushCore(edge, nib: nib, finish: finish), nib: nib)

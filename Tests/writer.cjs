@@ -14,6 +14,9 @@ const engines = require("playwright");
     });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      if (!localStorage.getItem("gridnote-pens")) localStorage.setItem("gridnote-pens", JSON.stringify({tools:{nib:"Gel"}}));
+    });
     await page.goto(process.env.GRIDNOTE_URL);
     await page.click("#new");
     const writer = page.getByRole("button", { name: "Writer", exact: true });
@@ -81,6 +84,8 @@ const engines = require("playwright");
       throw Error("Stroke " + count + " was not saved");
     }
     await options();
+    assert.equal(await panel.getByRole("button",{name:"Gel",exact:true}).count(), 0);
+    assert.equal(await panel.getByRole("button",{name:"Pen",exact:true}).getAttribute("aria-pressed"), "true");
     await tip("Fineliner");
     await slider("Width", 1.1);
     // First contact identifies an external pen after a mouse chose the tool.
@@ -88,14 +93,14 @@ const engines = require("playwright");
       (await draw([0.1, 0.8, 1])).every((x) => Math.abs(x - 0.55) < 0.00001),
     );
     const spans = {};
-    for (const name of ["Pen", "Brush", "Fineliner", "Gel", "Fountain", "Pencil"]) {
+    for (const name of ["Pen", "Brush", "Fineliner", "Fountain", "Pencil"]) {
       await options();
       await tip(name);
       assert.equal(await panel.getByRole("button",{name:"Dry",exact:true}).count(), name === "Brush" ? 1 : 0);
       const original = Number(
         await panel.getByLabel("Width", { exact: true }).inputValue(),
       );
-      assert.equal(original, { Pen: 1.5, Brush: 2, Fineliner: 1.1, Gel:2.5, Fountain:4.2, Pencil:2.1 }[name]);
+      assert.equal(original, { Pen: 1.5, Brush: 2, Fineliner: 1.1, Fountain:2, Pencil:2.1 }[name]);
       await slider("Width", 3);
       const radii = await draw([0.1, 0.4, 0.8, 1]);
       spans[name] = Math.max(...radii) - Math.min(...radii);
@@ -105,13 +110,13 @@ const engines = require("playwright");
         spans.Brush > 3 * spans.Pen &&
         spans.Fineliner < 0.00001,
     );
-    assert(spans.Gel < spans.Pen && spans.Pencil > spans.Fountain);
+    assert(spans.Pencil > 0.3 && spans.Fountain > 0.25);
     const tips = await page.evaluate(async () => {
       const {loadRecord,loadState} = await import("./store.mjs");
       const {book} = await loadRecord(await loadState("last"));
-      return book.objects.slice(-3).map(o => o.inkNib);
+      return book.objects.slice(-2).map(o => o.inkNib);
     });
-    assert.deepEqual(tips,["Gel","Fountain","Pencil"].map(tip => ({tip,width:3,textured:true})));
+    assert.deepEqual(tips,["Fountain","Pencil"].map(tip => ({tip,width:3,materialVersion:2})));
     const density = await page.evaluate(async () => {
       const {loadState, loadRecord} = await import("./store.mjs");
       const {paintObject} = await import("./render.mjs");
@@ -278,6 +283,16 @@ const engines = require("playwright");
         book.objects.push(o);
         return o;
       });
+      // Verify new and historical material on the same saved and exported sheet.
+      const modern = samples.filter(o => o.inkNib.tip !== "Gel").map(o => {
+        const points = o.content.ink._0.map(p => ({...p,position:[p.position[0],p.position[1]+96]}));
+        const mark = makeInk(points,o.content.ink._1);
+        mark.inkNib = {...o.inkNib, materialVersion:2};
+        delete mark.inkNib.textured;
+        if (o.ballpointWidth) mark.ballpointWidth = o.ballpointWidth;
+        book.objects.push(mark);
+        return mark;
+      });
       const zoom = 5, doc = await readPDF(await makePDF(book));
       const bitmap = await pdfBitmap(doc,0,W*zoom);
       const ctx = bitmap.getContext("2d");
@@ -297,11 +312,11 @@ const engines = require("playwright");
         return ink;
       };
       const surface = document.createElement("canvas");
-      surface.width = 800; surface.height = 420;
+      surface.width = 800; surface.height = 920;
       const live = surface.getContext("2d");
       live.fillStyle = "white"; live.fillRect(0,0,surface.width,surface.height);
       live.scale(zoom,zoom); live.translate(0,-263);
-      samples.forEach(o => paintObject(live,o));
+      [...samples,...modern].forEach(o => paintObject(live,o));
       function range(bytes) {
         const sorted = [...bytes].sort((a,b)=>a-b);
         return sorted[Math.floor(sorted.length*.98)] - sorted[Math.floor(sorted.length*.02)];
@@ -312,11 +327,20 @@ const engines = require("playwright");
         return {tip,screen:range(data.filter((_,k)=>k%4===0)),pdf:range(scan(y,180,2))};
       });
       const gaps = y => scan(y-1.8, 170, 18).filter(value => value > 90).length;
-      return {grain,inkedGaps:gaps(220), dryGaps:gaps(240), gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
+      const smooth = modern.map(o => {
+        const y = o.content.ink._0[0].position[1];
+        const data = live.getImageData(100*zoom,(y-263)*zoom,180,2).data;
+        return {tip:o.inkNib.finish ?? o.inkNib.tip,screen:range(data.filter((_,k)=>k%4===0)),pdf:range(scan(y,180,2))};
+      });
+      return {grain,smooth,inkedGaps:gaps(220), dryGaps:gaps(240), gel:Math.max(...gel), graphiteContrast:Math.max(...pencil)-Math.min(...pencil),
         narrow:coverage(116,1), broad:coverage(178,-1)};
     });
     for (const {tip,screen,pdf} of marks.grain)
       assert(screen > 10 && pdf > 10, tip+" needs visible grain on both canvas and PDF: "+[screen,pdf]);
+    for (const {tip,screen,pdf} of marks.smooth) {
+      if (tip === "Pencil") assert(screen >= 3 && screen <= 45 && pdf >= 3 && pdf <= 45,"restrained graphite on screen and PDF "+[screen,pdf]);
+      else if (tip !== "Dry") assert(screen <= 2 && pdf <= 2,"clean interior on screen and PDF for "+tip);
+    }
     assert(marks.dryGaps > 250 && marks.inkedGaps < 5, "the printed Dry brush separates into bristles and Inked stays solid");
     assert(marks.gel < 10 && marks.graphiteContrast > 45, "gel is opaque and the printed pencil shows paper tooth");
     assert(marks.broad > 1.7*marks.narrow, "a broad fountain nib changes the printed width with direction");
