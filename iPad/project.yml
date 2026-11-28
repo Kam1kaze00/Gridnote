@@ -7,8 +7,8 @@ settings:
   base:
     TARGETED_DEVICE_FAMILY: "2"
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.5.5"
-    CURRENT_PROJECT_VERSION: 3
+    MARKETING_VERSION: "1.6.0"
+    CURRENT_PROJECT_VERSION: 4
 targets:
   Gridnote:
     type: application

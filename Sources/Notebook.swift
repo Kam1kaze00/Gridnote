@@ -52,6 +52,7 @@ struct InkNib: Codable, Equatable {
   var finish: BrushFinish? = nil
   var seed: Int? = nil
   var textured: Bool? = nil
+  var materialVersion: Int? = nil
 }
 
 struct NoteObject: Codable, Equatable, Identifiable {
@@ -250,29 +251,36 @@ func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = [],
   }
   var filtered = raw
   var strength = Array(repeating: CGFloat.zero, count: raw.count)
+  // Consecutive turns to the same side describe a loop. An isolated sharp turn is a corner.
+  let timed = times.count == raw.count
+  var turns = Array(repeating: CGFloat.zero, count: raw.count)
   for i in 1..<(raw.count - 1) {
-    let a = raw[i - 1].position
-    let b = raw[i].position
-    let c = raw[i + 1].position
-    let u = b - a
-    let v = c - b
-    let lengths = max(u.length * v.length, 0.0001)
-    let turn = u.dot(v) / lengths
-    let interval = times.count == raw.count ? times[i + 1] - times[i - 1] : 0
-    let speed = interval > 0 ? (u.length + v.length) / interval : 0
-    let speedWeight = 1 / (1 + speed / 650)
-    let smooth = min(1, max(0, (turn - 0.70) / 0.26)) * amount * speedWeight
-    let target = a + (c - a) * (u.length / max(u.length + v.length, 0.001))
-    let correction = target - b
-    var capped = min(0.46 * smooth, 0.85 / max(correction.length, 0.001))
+    let u = raw[i].position - raw[i - 1].position
+    let v = raw[i + 1].position - raw[i].position
+    guard min(u.length, v.length) > 0.08,
+      !timed || max(times[i] - times[i-1], times[i+1] - times[i]) < 0.055 else { continue }
+    turns[i] = atan2(u.x*v.y - u.y*v.x, u.dot(v))
+  }
+  for i in 1..<(raw.count - 1) {
+    let a = raw[i - 1].position, b = raw[i].position, c = raw[i + 1].position
+    let u = b - a, v = c - b, l = u.length, m = v.length
+    guard min(l,m) > 0.08,
+      !timed || max(times[i] - times[i-1], times[i+1] - times[i]) < 0.055 else { continue }
+    let turn = u.dot(v) / (l*m), angle = turns[i]
+    let sign: CGFloat = angle < 0 ? -1 : 1
+    let curve = abs(angle) > 0.09 && abs(angle) < 2.35 && min(sign*turns[i-1], sign*turns[i+1]) > 0.055
+    let fair = min(1, max(0, (turn - 0.36) / 0.56))
+    let correction = a + (c - a) * (l / (l + m)) - b
+    let tolerance = min(0.72, max(0.20, raw[i].radius * 0.64))
+    var capped = amount * fair * (curve ? 0.14 : 0.67) * min(1, tolerance / max(0.001, correction.length))
     if technical && turn > 0.35 {
       // Technical nibs keep an even track. Straighten only sub-nib chatter.
       let tolerance = min(0.50, raw[i].radius * 0.85)
       let micro = max(0, 1 - correction.length / tolerance) * min(1, (turn - 0.35) / 0.4)
-      capped = max(capped, 0.86 * amount * micro)
+      capped += (amount - capped) * 0.75 * micro
     }
     filtered[i].position = b + correction * capped
-    strength[i] = smooth
+    strength[i] = amount * (curve ? 1 : fair)
   }
 
   var result = [filtered[0]]
@@ -293,14 +301,14 @@ func smoothedInk(_ raw: [InkPoint], amount: CGFloat, times: [TimeInterval] = [],
       b.position
       - (vector * (1 - strength[i + 1]) + outgoing
         * (strength[i + 1] * length / max(outgoing.length, 0.001))) * (1.0 / 3)
-    let steps = max(1, min(1000, Int(ceil(length / 1.8))))
+    let steps = max(1, min(1000, Int(ceil(length / 1.35))))
     for step in 1...steps {
       let t = CGFloat(step) / CGFloat(steps)
       let s = 1 - t
       let first = a.position * (s * s * s) + c1 * (3 * s * s * t)
       let second = c2 * (3 * s * t * t) + b.position * (t * t * t)
       var sample = a.interpolated(to: b, by: t)
-      sample.position = first + second
+      sample.position = step == steps ? b.position : first + second
       result.append(sample)
     }
   }

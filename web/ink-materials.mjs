@@ -14,7 +14,9 @@ for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
     patches.push([x*spacing, y*spacing, (0.60 + ((n>>>8)%76)/100)*spacing, (0.55 + ((n>>>16)%71)/100)*spacing]);
 }
 
-export function inkLayers(tip, finish) {
+export function inkLayers(tip, finish, version) {
+  if (version === 2 && tip === "Pencil") return [0.47, 0.16];
+  if (version === 2 && tip === "Brush" && finish === "Dry") return [0.65, 0.94];
   if (tip === "Brush" && finish === "Inked") return [0.59, 0.96];
   if (tip === "Brush" && finish === "Dry") return [0.055, 0.94];
   switch (tip) {
@@ -44,14 +46,15 @@ export function graphitePattern(ctx, color) {
 }
 
 // Each PDF page references the same small vector tile for all strokes of one color.
-export function graphitePDFFill(lib, doc, page, cache, ink, path, y) {
-  const name = lib.PDFName.of, key = [ink.r, ink.g, ink.b].join(" ");
+export function graphitePDFFill(lib, doc, page, cache, ink, path, y, opacity) {
+  const name = lib.PDFName.of, color = [ink.r, ink.g, ink.b].join(" ");
+  const key = color + "/" + opacity;
   let record = cache.get(key);
   if (!record) {
     const geometry = patches.map(rect => rect.map(x => x.toFixed(4)).join(" ") + " re").join("\n");
-    const stream = doc.context.flateStream(key + " rg\n/G gs\n" + geometry + "\nf", {
+    const stream = doc.context.flateStream(color + " rg\n/G gs\n" + geometry + "\nf", {
       Type: "Pattern", PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0,0,side,side],
-      XStep: side, YStep: side, Resources: {ExtGState:{G:{Type:"ExtGState",ca:inkLayers("Pencil")[1]}}},
+      XStep: side, YStep: side, Resources: {ExtGState:{G:{Type:"ExtGState",ca:opacity}}},
     });
     record = {ref:doc.context.register(stream), name:name("GridnoteGrain"+cache.size)};
     cache.set(key,record);
